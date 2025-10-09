@@ -144,6 +144,55 @@
                     <span class="monitor-label">QUANTUM PROCESSING</span>
                 </div>
             </div>
+
+            <!-- Neural ChatBox Testing Interface -->
+            <div id="neuralChatBox" class="neural-chatbox holo-reflection">
+                <div class="chatbox-header">
+                    <div class="chat-neural-line"></div>
+                    <h3 class="chat-title">
+                        <span class="chat-icon">💬</span>
+                        NEURAL TEXT INTERFACE
+                        <span class="chat-status" id="chatStatus">OFFLINE</span>
+                    </h3>
+                    <button id="chatToggleBtn" class="chat-toggle-btn">
+                        <div class="toggle-core"></div>
+                        <span class="toggle-text">TEST MODE</span>
+                    </button>
+                </div>
+                
+                <div class="chatbox-content" id="chatboxContent">
+                    <div class="neural-messages" id="neuralMessages">
+                        <div class="system-message">
+                            <div class="message-avatar system">🤖</div>
+                            <div class="message-bubble system">
+                                <span class="message-text">Neural Text Interface initialisé • Testez votre modèle LLM ici</span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="neural-input-zone">
+                        <div class="input-neural-bg"></div>
+                        <div class="input-container">
+                            <textarea 
+                                id="neuralInput" 
+                                placeholder="Tapez votre message pour tester le modèle..."
+                                class="neural-textarea"
+                                rows="2"
+                            ></textarea>
+                            <button id="neuralSendBtn" class="neural-send-btn" disabled>
+                                <div class="send-core">
+                                    <span class="send-icon">⚡</span>
+                                </div>
+                                <div class="send-glow"></div>
+                            </button>
+                        </div>
+                        <div class="input-status" id="inputStatus">
+                            <span class="status-indicator"></span>
+                            <span class="status-text">Prêt à envoyer</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </main>
 
         <!-- Holographic Footer -->

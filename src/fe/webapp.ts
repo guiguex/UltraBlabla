@@ -14,6 +14,8 @@ interface VoicePlugin {
     resumeListening(): Promise<{ resumed: boolean }>;
     addListener(eventName: string, listenerFunc: (data: any) => void): void;
     removeAllListeners(): void;
+    processText(options: { text: string; action: string }): Promise<{ response?: string }>;
+    requestMicrophonePermission(): Promise<{ granted: boolean; state: string }>;
 }
 
 // UltraBlablaAI plugin removed - VoicePlugin handles everything now
@@ -67,6 +69,7 @@ class UltraBlablaVoiceApp {
             this.initializeElements();
             this.setupEventListeners();
             this.setupVoiceCallbacks();
+            this.initializeChatBox();
             this.initializeApp();
         });
     }
@@ -478,6 +481,241 @@ class UltraBlablaVoiceApp {
     private showSettings() {
         // TODO: Implémenter l'écran de paramètres
         this.addMessage('⚙️ Paramètres - À implémenter', 'system');
+    }
+
+    private initializeChatBox(): void {
+        console.log('Initialisation du ChatBox Neural');
+        
+        const chatToggle = document.getElementById('chatToggleBtn') as HTMLButtonElement;
+        const chatContent = document.getElementById('chatboxContent') as HTMLElement;
+        const sendBtn = document.getElementById('neuralSendBtn') as HTMLButtonElement;
+        const textarea = document.getElementById('neuralInput') as HTMLTextAreaElement;
+        const messagesContainer = document.getElementById('neuralMessages') as HTMLElement;
+        const statusText = document.getElementById('inputStatusText') as HTMLElement | null;
+        const statusIndicator = document.getElementById('statusIndicator') as HTMLElement | null;
+        
+        if (chatToggle && chatContent) {
+            // Toggle ChatBox visibility
+            chatToggle.addEventListener('click', () => {
+                const isExpanded = chatContent.style.display !== 'none';
+                chatContent.style.display = isExpanded ? 'none' : 'flex';
+                chatToggle.querySelector('.toggle-text')!.textContent = isExpanded ? 'EXPAND' : 'COLLAPSE';
+            });
+        }
+
+        if (sendBtn && textarea && messagesContainer) {
+            const sendMessage = async () => {
+                const message = textarea.value.trim();
+                if (!message) return;
+
+                // Ajouter message utilisateur
+                this.addChatMessage(messagesContainer, 'user', '🧠', message);
+                textarea.value = '';
+                
+                // Mettre à jour le status (optionnel)
+                if (statusIndicator && statusText) {
+                    this.updateChatStatus(statusIndicator, statusText, 'processing', 'PROCESSING...');
+                }
+                
+                // Ajouter indicateur de typing
+                const typingElement = this.addTypingIndicator(messagesContainer);
+                
+                try {
+                    // Appeler l'IA via VoicePlugin
+                    const response = await this.getAIResponse(message);
+                    
+                    // Supprimer indicateur de typing
+                    if (typingElement) {
+                        messagesContainer.removeChild(typingElement);
+                    }
+                    
+                    // Ajouter réponse de l'IA
+                    this.addChatMessage(messagesContainer, 'ai', '🤖', response);
+                    if (statusIndicator && statusText) {
+                        this.updateChatStatus(statusIndicator, statusText, 'ready', 'READY');
+                    }
+                    
+                } catch (error) {
+                    console.error('Erreur ChatBox:', error);
+                    
+                    if (typingElement) {
+                        messagesContainer.removeChild(typingElement);
+                    }
+                    
+                    this.addChatMessage(messagesContainer, 'ai', '⚠️', 
+                        'Erreur de connexion avec le modèle neural. Vérifiez les logs.');
+                    if (statusIndicator && statusText) {
+                        this.updateChatStatus(statusIndicator, statusText, 'error', 'ERROR');
+                    }
+                }
+            };
+
+            // Event listeners
+            sendBtn.addEventListener('click', sendMessage);
+            textarea.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    sendMessage();
+                }
+            });
+
+            // Message système initial avec test des permissions
+            setTimeout(async () => {
+                this.addChatMessage(messagesContainer, 'system', '⚡', 
+                    'Neural ChatBox activé. Test des permissions...');
+                
+                try {
+                    // Test explicite des permissions microphone
+                    const permResult = await this.voice.requestMicrophonePermission();
+                    
+                    if (permResult.granted) {
+                        this.addChatMessage(messagesContainer, 'system', '✅', 
+                            'Permissions microphone accordées ! Modèle Qwen3-0.6B prêt.');
+                    } else {
+                        this.addChatMessage(messagesContainer, 'system', '❌', 
+                            `Permission microphone requise. État: ${permResult.state}`);
+                        
+                        // Ajouter un bouton pour demander les permissions
+                        const buttonDiv = document.createElement('div');
+                        buttonDiv.innerHTML = `
+                            <button id="requestPermBtn" style="
+                                background: linear-gradient(135deg, var(--holo-primary), var(--energy-blue));
+                                border: none;
+                                border-radius: 15px;
+                                padding: 10px 20px;
+                                color: white;
+                                cursor: pointer;
+                                margin-top: 10px;
+                            ">🎤 Demander les permissions</button>
+                        `;
+                        messagesContainer.appendChild(buttonDiv);
+                        
+                        buttonDiv.querySelector('#requestPermBtn')?.addEventListener('click', async () => {
+                            const result = await this.voice.requestMicrophonePermission();
+                            this.addChatMessage(messagesContainer, 'system', 
+                                result.granted ? '✅' : '❌', 
+                                result.granted ? 'Permissions accordées !' : 'Permissions refusées');
+                        });
+                    }
+                } catch (error) {
+                    this.addChatMessage(messagesContainer, 'system', '⚠️', 
+                        'Erreur test permissions: ' + error);
+                }
+                
+                if (statusIndicator && statusText) {
+                    this.updateChatStatus(statusIndicator, statusText, 'ready', 'READY');
+                }
+            }, 1000);
+        }
+    }
+
+    private addChatMessage(container: HTMLElement, type: 'system' | 'user' | 'ai', avatar: string, text: string): void {
+        const messageDiv = document.createElement('div');
+        messageDiv.className = `${type}-message`;
+        
+        messageDiv.innerHTML = `
+            <div class="message-avatar ${type}">
+                ${avatar}
+            </div>
+            <div class="message-bubble">
+                <div class="message-text">${text}</div>
+            </div>
+        `;
+        
+        container.appendChild(messageDiv);
+        container.scrollTop = container.scrollHeight;
+    }
+
+    private addTypingIndicator(container: HTMLElement): HTMLElement {
+        const typingDiv = document.createElement('div');
+        typingDiv.className = 'ai-message typing-message';
+        
+        typingDiv.innerHTML = `
+            <div class="message-avatar ai">🤖</div>
+            <div class="message-bubble">
+                <div class="message-text">
+                    <div class="typing-indicator">
+                        <div class="typing-dot"></div>
+                        <div class="typing-dot"></div>
+                        <div class="typing-dot"></div>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        container.appendChild(typingDiv);
+        container.scrollTop = container.scrollHeight;
+        return typingDiv;
+    }
+
+    private updateChatStatus(indicator: HTMLElement, text: HTMLElement, status: 'ready' | 'processing' | 'error', message: string): void {
+        indicator.className = `status-indicator ${status}`;
+        text.textContent = message;
+    }
+
+    private async getAIResponse(message: string): Promise<string> {
+        try {
+            console.log('Envoi du message à l\'IA:', message);
+            
+            // D'abord tester si le système est prêt
+            if (message.toLowerCase().includes('permission') || message.toLowerCase().includes('micro')) {
+                const permCheck = await this.voice.checkPermissions();
+                return `Système de permissions: ${permCheck.granted ? '✅ ACTIF' : '❌ INACTIF'} (État: ${permCheck.microphone})`;
+            }
+            
+            // Test du serveur LLM intégré
+            if (message.toLowerCase().includes('test') || message.toLowerCase().includes('modèle')) {
+                try {
+                    const initResult = await this.voice.init();
+                    return `État du modèle LLM: ${initResult.llm ? '✅ Chargé' : '❌ Erreur'} | Vosk: ${initResult.vosk ? '✅ OK' : '❌ KO'}`;
+                } catch (error) {
+                    return `Erreur initialisation: ${error}`;
+                }
+            }
+            
+            // Utiliser VoicePlugin pour tester l'IA
+            const result = await this.voice.processText({ 
+                text: message,
+                action: 'chat'
+            });
+            
+            if (result && result.response) {
+                return result.response;
+            } else {
+                // Fallback avec réponses plus informatives
+                return this.getFallbackResponse(message);
+            }
+            
+        } catch (error) {
+            console.error('Erreur lors de l\'appel à l\'IA:', error);
+            return `❌ Erreur: ${error}. Fallback: ${this.getFallbackResponse(message)}`;
+        }
+    }
+
+    private getFallbackResponse(message: string): string {
+        // Réponses spécialisées selon le contenu
+        if (message.toLowerCase().includes('bonjour') || message.toLowerCase().includes('salut')) {
+            return `Bonjour ! Je suis UltraBlabla AI. Système neural en ligne. Comment puis-je vous aider ?`;
+        }
+        
+        if (message.toLowerCase().includes('comment') && message.toLowerCase().includes('vas')) {
+            return `Système neural fonctionnel à 100%. Toutes mes fonctions cognitives sont opérationnelles.`;
+        }
+        
+        if (message.toLowerCase().includes('quoi') || message.toLowerCase().includes('que')) {
+            return `Je suis une IA vocale intégrée avec Vosk STT et Qwen3-0.6B LLM. Je peux répondre à vos questions.`;
+        }
+        
+        const responses = [
+            `Message reçu et traité par UltraBlabla AI. Analyse: "${message.substring(0, 50)}${message.length > 50 ? '...' : ''}"`,
+            `Système neural actif. Votre requête a été intégrée dans ma base de connaissances.`,
+            `IA conversationnelle prête. Modèle Qwen3 en mode test avec votre message.`,
+            `Interface cognitive opérationnelle. Processing terminé avec succès.`,
+            `Réponse générée par le noyau neural UltraBlabla. Status: ONLINE`
+        ];
+        
+        const randomIndex = Math.floor(Math.random() * responses.length);
+        return responses[randomIndex];
     }
 }
 

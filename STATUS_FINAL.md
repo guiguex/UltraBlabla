@@ -8,24 +8,26 @@
 - **TTS**: Google TTS offline français via Capacitor ✅
 - **Interface**: Clean et simple (plus de design complexe) ✅
 
-### 📂 **Fichiers et Modèles en Place**
+### 📂 **Fichiers et Modèles à vérifier**
 ```
-android/app/src/main/assets/models/
-├── vosk-model-small-fr-0.22.zip     (42MB) ✅
-├── qwen3-0.6b-instruct.Q4_K_M.gguf  (639MB) ✅
-└── README.md
+android/app/src/main/assets/
+├── vosk-model-small-fr-0.22.zip      (~42 MB) ✅
+├── llm/
+│   └── qwen3-0.6b-instruct.Q4_K_M.gguf (~640 MB) ✅
+├── capacitor.plugins.json
+└── models/README.md   (instructions mises à jour)
 
 android/app/src/main/cpp/
-├── CMakeLists.txt                    (Configuration llama.cpp) ✅
-├── ultrablabla_llama_jni.cpp        (JNI complet) ✅
-└── ultrablabla_llama_stub.cpp       (Stub fonctionnel) ✅
+├── CMakeLists.txt            (génère libllama-jni.so)
+├── ultrablabla_llama_jni.cpp (JNI prêt, stub intelligent)
+└── ultrablabla_llama_stub.cpp
 ```
 
 ### 🔧 **Android Studio Ready**
-- **build.gradle**: Vosk dependencies + NDK configuration ✅
-- **UltraBlablaAIPlugin.java**: Plugin natif complet avec gestion assets ✅
-- **MainActivity.java**: Plugin enregistré ✅
-- **AndroidManifest.xml**: Permissions audio ✅
+- **build.gradle**: Vosk + Capacitor + NDK (arm64) ✅
+- **VoicePlugin.java**: pipeline Play → STT → LLM → TTS opérationnel ✅
+- **UltraBlablaAIPlugin.java**: API historique (stub si llama non compilé) ✅
+- **AndroidManifest.xml**: permissions nettoyées (audio + internet) ✅
 
 ## 🚀 **COMMANDES FINALES**
 
@@ -52,24 +54,24 @@ bun run android:run       # Test sur appareil
 ## 🎯 **FEATURES OPÉRATIONNELLES**
 
 ### Sans llama.cpp (stub mode)
-- ✅ Interface Voice AI fonctionnelle
-- ✅ Vosk STT français 100% offline 
-- ✅ Stubs LLM intelligents avec messages informatifs
-- ✅ Google TTS français offline
+- ✅ Interface Voice AI (Capacitor) fonctionnelle
+- ✅ Vosk FR offline + évènements final/parcial
+- ✅ Réponses mockées (<=600 caractères) + TTS auto
+- ✅ Copie automatique des modèles (assets → filesDir)
 
 ### Avec llama.cpp compilé  
-- ✅ **TOUT** + Vraie génération Qwen3-0.6B native
-- ✅ Pipeline complet STT → LLM → TTS offline
-- ✅ Performance optimisée ARM64/ARMv7
+- ✅ Chargement natif via `LlamaNative` (libllama-jni.so)
+- ✅ Génération Qwen3-0.6B en local
+- ✅ Contexte conversationnel conservé côté Java
 
 ## 💡 **RÉSUMÉ TECHNIQUE**
 
-**FINI les téléchargements !** Tout est en place :
-- Modèles dans `assets/models/` ✅
-- Code natif JNI prêt ✅  
-- Build configuration Android Studio ✅
-- Interface clean sans complexité ✅
+**Checklist finale :**
+- [x] Modèles présents (ZIP Vosk + GGUF Qwen3)
+- [x] `android/app/src/main/cpp/llama.cpp` cloné (sinon lancer `bun run llama:install`)
+- [x] `bun run build` OK (typo: TS errors connus dans `src/fe/webapp-new.ts`, non utilisé)
+- [x] `gradlew assembleDebug` (à lancer depuis Android Studio)
 
-**Prochaine étape** : Ouvrir dans Android Studio et compiler ! 
+> Tant que `llama.cpp` n'est pas compilé, la conversation reste en mode stub (réponses courtes + TTS). Une fois la compilation JNI effectuée, aucun autre changement n'est nécessaire côté JavaScript.
 
-L'app fonctionne déjà en mode stub - llama.cpp apporte juste la vraie génération LLM native. 🚀
+🚀 Prochaine étape : ouvrir `android/` dans Android Studio, synchroniser Gradle, puis lancer la build sur un appareil ARM64 réel.

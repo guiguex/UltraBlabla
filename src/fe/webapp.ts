@@ -15,6 +15,15 @@ interface VoicePlugin {
     removeAllListeners(): void;
 }
 
+interface UltraBlablaAIPlugin {
+    checkPermissions(): Promise<{ granted: boolean }>;
+    sttStart(): Promise<{ success: boolean }>;
+    sttStop(): Promise<{ success: boolean }>;
+    llmGenerate(options: { prompt: string }): Promise<{ success: boolean; response?: string }>;
+    addListener(eventName: string, listenerFunc: (data: any) => void): void;
+    removeAllListeners(): void;
+}
+
 // Events du plugin Voice
 interface STTResult {
     type: 'partial' | 'intermediate' | 'final';
@@ -33,8 +42,30 @@ interface ProcessingStatus {
     error?: string;
 }
 
-// Register plugin
+declare global {
+    interface Window {
+        UltraBlablaAI: UltraBlablaAIPlugin;
+    }
+}
+
+// Register plugins
 const Voice = registerPlugin<VoicePlugin>('Voice');
+const nativeUltraBlablaAI = registerPlugin<UltraBlablaAIPlugin>('UltraBlablaAI');
+
+const webUltraBlablaAI: UltraBlablaAIPlugin = {
+    checkPermissions: () => Promise.resolve({ granted: true }),
+    sttStart: () => Promise.resolve({ success: true }),
+    sttStop: () => Promise.resolve({ success: true }),
+    llmGenerate: ({ prompt }) => Promise.resolve({
+        response: `Réponse mockée pour: "${prompt}"`,
+        success: true
+    }),
+    addListener: () => {},
+    removeAllListeners: () => {}
+};
+
+const UltraBlablaAI = Capacitor.isNativePlatform() ? nativeUltraBlablaAI : webUltraBlablaAI;
+window.UltraBlablaAI = UltraBlablaAI;
 
 class UltraBlablaVoiceApp {
     // États conversationnels
@@ -56,8 +87,8 @@ class UltraBlablaVoiceApp {
     private conversationHistory: Array<{user: string, ai: string, timestamp: number}> = [];
 
     constructor() {
-        // Initialisation du plugin native
-        this.voice = (Capacitor as any).Plugins?.Voice || null;
+        // Initialisation du plugin natif
+        this.voice = Voice;
         
         // Attendre que le DOM soit prêt
         document.addEventListener('DOMContentLoaded', () => {
@@ -90,26 +121,55 @@ class UltraBlablaVoiceApp {
         // Interruption par toucher
         document.addEventListener('touchstart', () => {
             if (this.isSpeaking) {
-                this.voice.pauseListening();
+                if (Capacitor.isNativePlatform()) {
+                    this.voice.pauseListening();
+                }
             }
         });
     }
     
     private setupVoiceCallbacks() {
-        if (!this.voice) {
-            console.warn('Plugin Voice non disponible en mode web');
+        if (!Capacitor.isNativePlatform()) {
+            console.warn('Plugin Voice disponible uniquement en mode natif');
             return;
         }
         
         // Configuration des événements Capacitor natifs (selon VoicePlugin.java)
-        this.voice.addListener('sttResult', (data: { text: string, type: string }) => {
+        this.voice.addListener('sttResult', (data: STTResult) => {
             if (data.type === 'final') {
                 this.handleSpeechResult(data.text);
+            } else if (data.type === 'partial') {
+                this.updateStatus(`🎧 ${data.text}`, 'listening');
             }
         });
         
-        this.voice.addListener('aiResponse', (data: { aiResponse: string }) => {
-            this.handleAIResponse(data.aiResponse);
+        this.voice.addListener('aiResponse', (data: AIResponse) => {
+            this.handleAIResponse(data);
+        });
+        
+        this.voice.addListener('llmProcessing', (data: ProcessingStatus) => {
+            this.isProcessing = data.status === 'processing';
+            if (data.status === 'processing') {
+                this.updateStatus('🧠 IA réfléchit...', 'processing');
+            } else if (data.status === 'error') {
+                this.updateStatus('❌ Erreur LLM', 'error');
+            }
+        });
+        
+        this.voice.addListener('llmError', (data: { error: string }) => {
+            this.isProcessing = false;
+            this.addMessage(`❌ Erreur LLM: ${data.error}`, 'system');
+            this.updateConversationStatus();
+        });
+        
+        this.voice.addListener('listeningStarted', () => {
+            this.isListening = true;
+            this.updateConversationStatus();
+        });
+        
+        this.voice.addListener('listeningStopped', () => {
+            this.isListening = false;
+            this.updateConversationStatus();
         });
         
         this.voice.addListener('conversationStarted', () => {
@@ -122,6 +182,10 @@ class UltraBlablaVoiceApp {
             this.isListening = false;
             this.isSpeaking = false;
             this.updateConversationStatus();
+        });
+        
+        this.voice.addListener('sttError', (data: { error: string }) => {
+            this.handleSTTError({ error: data.error });
         });
         
         this.voice.addListener('voiceError', (data: { error: string }) => {
@@ -142,15 +206,37 @@ class UltraBlablaVoiceApp {
         }
     }
     
-    private async handleAIResponse(response: string) {
-        if (response.trim()) {
-            this.addMessage(response, 'ai');
+    private async handleAIResponse(data: AIResponse) {
+        const userText = data.userText?.trim() ?? '';
+        const aiResponse = data.aiResponse?.trim() ?? '';
+        
+        if (userText) {
+            const lastEntry = this.conversationHistory[this.conversationHistory.length - 1];
+            if (!lastEntry || lastEntry.user !== userText) {
+                this.addMessage(userText, 'user');
+                this.conversationHistory.push({
+                    user: userText,
+                    ai: '',
+                    timestamp: data.timestamp || Date.now()
+                });
+            }
+        }
+        
+        if (aiResponse) {
+            this.addMessage(aiResponse, 'ai');
             if (this.conversationHistory.length > 0) {
-                this.conversationHistory[this.conversationHistory.length - 1].ai = response;
+                this.conversationHistory[this.conversationHistory.length - 1].ai = aiResponse;
             }
             
             // Réponse vocale automatique pour conversation ultra-dynamique
-            await this.speakResponse(response);
+            this.isSpeaking = true;
+            this.updateConversationStatus();
+            try {
+                await this.speakResponse(aiResponse);
+            } finally {
+                this.isSpeaking = false;
+                this.updateConversationStatus();
+            }
         }
     }
     
@@ -194,20 +280,27 @@ class UltraBlablaVoiceApp {
     private async initializeNativePlugins() {
         try {
             // Vérifier les permissions
-            const permissions = await window.UltraBlablaAI.checkPermissions();
+            const permissions = await UltraBlablaAI.checkPermissions();
             
             if (!permissions.granted) {
                 this.updateStatus('Permissions requises', 'error');
                 this.addMessage('❌ Permission microphone requise', 'system');
                 return;
             }
+            
+            const voiceStatus = await this.voice.init();
+            if (!voiceStatus.ok) {
+                this.updateStatus('Erreur initialisation audio', 'error');
+                this.addMessage('❌ Impossible d\'initialiser le moteur vocal natif', 'system');
+                return;
+            }
 
             // Configurer les listeners pour les résultats STT
-            window.UltraBlablaAI.addListener('sttResult', (data) => {
+            UltraBlablaAI.addListener('sttResult', (data) => {
                 this.handleSTTResult(data);
             });
 
-            window.UltraBlablaAI.addListener('sttError', (data) => {
+            UltraBlablaAI.addListener('sttError', (data) => {
                 this.handleSTTError(data);
             });
 
@@ -264,7 +357,7 @@ class UltraBlablaVoiceApp {
             this.recordBtn.classList.add('conversation');
             this.recordBtn.querySelector('.btn-text')!.textContent = 'Conversation Active';
             
-            this.addMessage('�️ Conversation ultra dynamique démarrée ! Parlez naturellement...', 'system');
+            this.addMessage('▶️ Conversation ultra dynamique démarrée ! Parlez naturellement...', 'system');
             this.updateConversationStatus();
             
         } catch (error) {
@@ -280,6 +373,7 @@ class UltraBlablaVoiceApp {
             await this.voice.stopConversation();
             
             this.isInConversation = false;
+            this.recordBtn.classList.remove('conversation');
             this.recordBtn.classList.remove('recording');
             this.recordBtn.querySelector('.btn-text')!.textContent = 'Parler';
             this.updateStatus('⏳ Traitement...', 'processing');
@@ -319,7 +413,7 @@ class UltraBlablaVoiceApp {
         this.updateStatus('🧠 IA réfléchit...', 'processing');
         
         try {
-            const result = await window.UltraBlablaAI.llmGenerate({ prompt });
+            const result = await UltraBlablaAI.llmGenerate({ prompt });
             
             if (result.success && result.response) {
                 this.addMessage(result.response, 'ai');
@@ -429,18 +523,3 @@ document.addEventListener('DOMContentLoaded', () => {
     console.log('🚀 UltraBlabla initialized - Native Android Voice AI');
 });
 
-// Pour le développement web (fallback)
-if (!Capacitor.isNativePlatform()) {
-    // Mock du plugin pour le dev web
-    window.UltraBlablaAI = {
-        checkPermissions: () => Promise.resolve({ granted: true }),
-        sttStart: () => Promise.resolve({ success: true }),
-        sttStop: () => Promise.resolve({ success: true }),
-        llmGenerate: ({ prompt }) => Promise.resolve({ 
-            response: `Réponse mockée pour: "${prompt}"`, 
-            success: true 
-        }),
-        addListener: () => {},
-        removeAllListeners: () => {}
-    };
-}

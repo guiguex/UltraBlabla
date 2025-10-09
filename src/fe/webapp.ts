@@ -6,8 +6,9 @@ import { TextToSpeech } from '@capacitor-community/text-to-speech';
 
 // Interface pour le plugin Voice natif ultra dynamique
 interface VoicePlugin {
-    init(): Promise<{ ok: boolean; vosk: boolean; llm: boolean }>;
-    startConversation(): Promise<{ started: boolean }>;
+    checkPermissions(): Promise<{ microphone: string; granted: boolean }>;
+    init(): Promise<{ ok: boolean; vosk: boolean; llm: boolean; permissions?: boolean; permissionDenied?: boolean }>;
+    startConversation(): Promise<{ started: boolean; permissionDenied?: boolean; error?: string }>;
     stopConversation(): Promise<{ stopped: boolean }>;
     pauseListening(): Promise<{ paused: boolean }>;
     resumeListening(): Promise<{ resumed: boolean }>;
@@ -15,14 +16,7 @@ interface VoicePlugin {
     removeAllListeners(): void;
 }
 
-interface UltraBlablaAIPlugin {
-    checkPermissions(): Promise<{ granted: boolean }>;
-    sttStart(): Promise<{ success: boolean }>;
-    sttStop(): Promise<{ success: boolean }>;
-    llmGenerate(options: { prompt: string }): Promise<{ success: boolean; response?: string }>;
-    addListener(eventName: string, listenerFunc: (data: any) => void): void;
-    removeAllListeners(): void;
-}
+// UltraBlablaAI plugin removed - VoicePlugin handles everything now
 
 // Events du plugin Voice
 interface STTResult {
@@ -42,30 +36,8 @@ interface ProcessingStatus {
     error?: string;
 }
 
-declare global {
-    interface Window {
-        UltraBlablaAI: UltraBlablaAIPlugin;
-    }
-}
-
-// Register plugins
+// Register plugins - VoicePlugin handles everything (STT + LLM + Permissions)
 const Voice = registerPlugin<VoicePlugin>('Voice');
-const nativeUltraBlablaAI = registerPlugin<UltraBlablaAIPlugin>('UltraBlablaAI');
-
-const webUltraBlablaAI: UltraBlablaAIPlugin = {
-    checkPermissions: () => Promise.resolve({ granted: true }),
-    sttStart: () => Promise.resolve({ success: true }),
-    sttStop: () => Promise.resolve({ success: true }),
-    llmGenerate: ({ prompt }) => Promise.resolve({
-        response: `Réponse mockée pour: "${prompt}"`,
-        success: true
-    }),
-    addListener: () => {},
-    removeAllListeners: () => {}
-};
-
-const UltraBlablaAI = Capacitor.isNativePlatform() ? nativeUltraBlablaAI : webUltraBlablaAI;
-window.UltraBlablaAI = UltraBlablaAI;
 
 class UltraBlablaVoiceApp {
     // États conversationnels
@@ -185,13 +157,38 @@ class UltraBlablaVoiceApp {
         });
         
         this.voice.addListener('sttError', (data: { error: string }) => {
-            this.handleSTTError({ error: data.error });
+            console.error('STT Error:', data.error);
+            this.addMessage('❌ Erreur de reconnaissance vocale', 'system');
+            this.updateStatus('Prêt • 100% Offline', 'online');
+            
+            this.isInConversation = false;
+            this.recordBtn.classList.remove('conversation');
+            this.recordBtn.querySelector('.btn-text')!.textContent = 'Parler';
         });
         
         this.voice.addListener('voiceError', (data: { error: string }) => {
             this.addMessage(`❌ Erreur native: ${data.error}`, 'system');
             this.isProcessing = false;
             this.updateConversationStatus();
+        });
+        
+        // Résultats STT depuis VoicePlugin
+        this.voice.addListener('sttResult', (data: STTResult) => {
+            if (data.type === 'final') {
+                this.handleSpeechResult(data.text);
+            } else if (data.type === 'partial') {
+                this.updateStatus(`🎧 ${data.text}`, 'listening');
+            }
+        });
+        
+        // Réponses IA depuis VoicePlugin
+        this.voice.addListener('aiResponse', (data: AIResponse) => {
+            this.handleAIResponse(data);
+        });
+        
+        // Indicateur vocal réactif
+        this.voice.addListener('voiceActivity', (data: { active: boolean; level: number }) => {
+            this.updateVoiceIndicator(data.active, data.level);
         });
     }
     
@@ -279,30 +276,24 @@ class UltraBlablaVoiceApp {
 
     private async initializeNativePlugins() {
         try {
-            // Vérifier les permissions
-            const permissions = await UltraBlablaAI.checkPermissions();
+            // Vérifier et demander les permissions via VoicePlugin
+            const permissionCheck = await this.voice.checkPermissions();
+            this.addMessage('🎙️ Vérification permissions microphone...', 'system');
             
-            if (!permissions.granted) {
-                this.updateStatus('Permissions requises', 'error');
-                this.addMessage('❌ Permission microphone requise', 'system');
-                return;
-            }
-            
+            // Initialiser VoicePlugin (avec demande automatique de permissions si nécessaire)
             const voiceStatus = await this.voice.init();
             if (!voiceStatus.ok) {
-                this.updateStatus('Erreur initialisation audio', 'error');
-                this.addMessage('❌ Impossible d\'initialiser le moteur vocal natif', 'system');
+                if (voiceStatus.permissionDenied) {
+                    this.updateStatus('Permission microphone refusée', 'error');
+                    this.addMessage('❌ Permission microphone refusée - Autorisez le microphone dans les paramètres Android', 'system');
+                } else {
+                    this.updateStatus('Erreur initialisation audio', 'error');
+                    this.addMessage('❌ Impossible d\'initialiser le moteur vocal natif', 'system');
+                }
                 return;
             }
 
-            // Configurer les listeners pour les résultats STT
-            UltraBlablaAI.addListener('sttResult', (data) => {
-                this.handleSTTResult(data);
-            });
-
-            UltraBlablaAI.addListener('sttError', (data) => {
-                this.handleSTTError(data);
-            });
+            this.addMessage('✅ Moteur vocal initialisé (Vosk STT + Qwen3 LLM)', 'system');
 
             // Initialiser TTS
             await this.initializeTTS();
@@ -351,7 +342,17 @@ class UltraBlablaVoiceApp {
         }
 
         try {
-            await this.voice.startConversation();
+            const result = await this.voice.startConversation();
+            
+            if (result.permissionDenied) {
+                this.addMessage('❌ Permission microphone refusée - Activez-la dans les paramètres Android', 'system');
+                return;
+            }
+            
+            if (!result.started) {
+                this.addMessage('❌ Impossible de démarrer la conversation - ' + (result.error || 'Erreur inconnue'), 'system');
+                return;
+            }
             
             this.isInConversation = true;
             this.recordBtn.classList.add('conversation');
@@ -384,52 +385,7 @@ class UltraBlablaVoiceApp {
         }
     }
 
-    private handleSTTResult(data: { text: string; success: boolean }) {
-        if (!data.success || !data.text?.trim()) {
-            this.addMessage('❌ Aucun texte détecté', 'system');
-            this.updateStatus('Prêt • 100% Offline', 'online');
-            return;
-        }
-
-        // Afficher le texte transcrit
-        this.addMessage(data.text, 'user');
-        
-        // Générer la réponse IA
-        this.generateAIResponse(data.text);
-    }
-
-    private handleSTTError(data: { error: string }) {
-        console.error('STT Error:', data.error);
-        this.addMessage('❌ Erreur de reconnaissance vocale', 'system');
-        this.updateStatus('Prêt • 100% Offline', 'online');
-        
-        this.isInConversation = false;
-        this.recordBtn.classList.remove('conversation');
-        this.recordBtn.querySelector('.btn-text')!.textContent = 'Démarrer Conversation';
-    }
-
-    private async generateAIResponse(prompt: string) {
-        this.isProcessing = true;
-        this.updateStatus('🧠 IA réfléchit...', 'processing');
-        
-        try {
-            const result = await UltraBlablaAI.llmGenerate({ prompt });
-            
-            if (result.success && result.response) {
-                this.addMessage(result.response, 'ai');
-                await this.speakResponse(result.response);
-            } else {
-                this.addMessage('❌ Impossible de générer une réponse', 'system');
-            }
-            
-        } catch (error) {
-            console.error('Error generating AI response:', error);
-            this.addMessage('❌ Erreur lors de la génération de la réponse IA', 'system');
-        } finally {
-            this.isProcessing = false;
-            this.updateStatus('Prêt • 100% Offline', 'online');
-        }
-    }
+    // Plus besoin de ces méthodes - VoicePlugin gère tout automatiquement !
 
     private async speakResponse(text: string) {
         try {
@@ -509,6 +465,14 @@ class UltraBlablaVoiceApp {
         }
         
         localStorage.setItem('ultrablabla-history', JSON.stringify(history));
+    }
+
+    private updateVoiceIndicator(active: boolean, level: number) {
+        if (active && level > 0.1) {
+            this.recordBtn?.classList.add('voice-active');
+        } else {
+            this.recordBtn?.classList.remove('voice-active');
+        }
     }
 
     private showSettings() {

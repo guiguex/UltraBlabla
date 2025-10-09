@@ -668,8 +668,8 @@ html, body {
 }
 
 .neural-record-btn {
-    width: 120px;
-    height: 120px;
+    width: 250px;
+    height: 250px;
     border: none;
     border-radius: 50%;
     position: relative;
@@ -708,15 +708,18 @@ html, body {
     top: 50%;
     left: 50%;
     transform: translate(-50%, -50%);
-    width: 60px;
-    height: 60px;
-    background: linear-gradient(135deg, var(--holo-primary), var(--quantum-purple));
+    width: 120px;
+    height: 120px;
+    background: linear-gradient(135deg, #ff0080, #8000ff, #00ff80, #ff8000);
+    background-size: 400% 400%;
     border-radius: 50%;
     display: flex;
     align-items: center;
     justify-content: center;
     z-index: 3;
-    box-shadow: var(--neural-glow);
+    box-shadow: 0 0 40px #ff0080, 0 0 80px #8000ff, inset 0 0 20px rgba(255,255,255,0.2);
+    animation: retro-80s-glow 3s ease-in-out infinite;
+    border: 3px solid #00ffff;
 }
 
 .mic-icon {
@@ -729,33 +732,47 @@ html, body {
 }
 
 .mic-core {
-    width: 12px;
-    height: 16px;
-    background: var(--quantum-black);
-    border-radius: 6px 6px 6px 6px;
+    width: 32px;
+    height: 40px;
+    background: linear-gradient(145deg, #ff0080, #8000ff);
+    border-radius: 16px 16px 8px 8px;
     position: relative;
+    box-shadow: 
+        inset 0 4px 8px rgba(255,0,128,0.6), 
+        0 0 20px #ff0080, 
+        0 0 40px #8000ff,
+        0 4px 8px rgba(0,0,0,0.8);
+    border: 2px solid #00ffff;
+    animation: mic-80s-pulse 2s ease-in-out infinite;
 }
 
 .mic-core::before {
     content: '';
     position: absolute;
-    bottom: -4px;
+    bottom: -10px;
     left: 50%;
     transform: translateX(-50%);
-    width: 20px;
-    height: 2px;
-    background: var(--quantum-black);
+    width: 48px;
+    height: 6px;
+    background: linear-gradient(90deg, #ff0080, #00ffff, #8000ff, #00ff80);
+    background-size: 200% 100%;
+    border-radius: 3px;
+    box-shadow: 0 0 15px rgba(0,255,255,1), 0 0 30px rgba(255,0,128,0.8);
+    animation: retro-bar-flow 2s ease-in-out infinite;
 }
 
 .mic-core::after {
     content: '';
     position: absolute;
-    bottom: -8px;
+    bottom: -20px;
     left: 50%;
     transform: translateX(-50%);
-    width: 2px;
-    height: 6px;
-    background: var(--quantum-black);
+    width: 8px;
+    height: 16px;
+    background: linear-gradient(180deg, #00ffff, #ff0080, #8000ff);
+    border-radius: 4px;
+    box-shadow: 0 0 12px rgba(255,0,128,1), 0 0 20px rgba(128,0,255,0.8);
+    animation: retro-stand-glow 1.5s ease-in-out infinite alternate;
 }
 
 .mic-waves {
@@ -1027,6 +1044,7 @@ html, body {
 .neural-record-btn.recording .mic-waves {
     opacity: 1;
 }
+.neural-record-btn.voice-active .mic-waves{opacity:.8;animation:voice-react .3s ease}
 
 @keyframes recording-pulse {
     0%, 100% { transform: scale(1); opacity: 0.9; }
@@ -1036,6 +1054,68 @@ html, body {
 @keyframes recording-core-glow {
     0%, 100% { box-shadow: 0 0 30px var(--neural-pink); }
     50% { box-shadow: 0 0 50px var(--quantum-purple); }
+}
+@keyframes voice-react{0%{transform:scale(1)}50%{transform:scale(1.15)}100%{transform:scale(1)}}
+
+/* ANNÉES 80 RETRO ANIMATIONS */
+@keyframes retro-80s-glow {
+    0% { 
+        background-position: 0% 50%;
+        box-shadow: 0 0 40px #ff0080, 0 0 80px #8000ff, inset 0 0 20px rgba(255,255,255,0.2);
+    }
+    25% { 
+        background-position: 50% 50%;
+        box-shadow: 0 0 50px #8000ff, 0 0 100px #00ff80, inset 0 0 30px rgba(255,255,255,0.3);
+    }
+    50% { 
+        background-position: 100% 50%;
+        box-shadow: 0 0 60px #00ff80, 0 0 120px #ff8000, inset 0 0 40px rgba(255,255,255,0.4);
+    }
+    75% { 
+        background-position: 50% 50%;
+        box-shadow: 0 0 50px #ff8000, 0 0 100px #ff0080, inset 0 0 30px rgba(255,255,255,0.3);
+    }
+    100% { 
+        background-position: 0% 50%;
+        box-shadow: 0 0 40px #ff0080, 0 0 80px #8000ff, inset 0 0 20px rgba(255,255,255,0.2);
+    }
+}
+
+@keyframes mic-80s-pulse {
+    0%, 100% { 
+        transform: scale(1);
+        box-shadow: inset 0 4px 8px rgba(255,0,128,0.6), 0 0 20px #ff0080, 0 0 40px #8000ff, 0 4px 8px rgba(0,0,0,0.8);
+    }
+    50% { 
+        transform: scale(1.1);
+        box-shadow: inset 0 6px 12px rgba(128,0,255,0.8), 0 0 30px #8000ff, 0 0 60px #00ff80, 0 6px 12px rgba(0,0,0,0.9);
+    }
+}
+
+@keyframes retro-bar-flow {
+    0% { 
+        background-position: 0% 50%;
+        box-shadow: 0 0 15px rgba(0,255,255,1), 0 0 30px rgba(255,0,128,0.8);
+    }
+    50% { 
+        background-position: 100% 50%;
+        box-shadow: 0 0 20px rgba(255,0,128,1), 0 0 40px rgba(0,255,128,0.9);
+    }
+    100% { 
+        background-position: 0% 50%;
+        box-shadow: 0 0 15px rgba(0,255,255,1), 0 0 30px rgba(255,0,128,0.8);
+    }
+}
+
+@keyframes retro-stand-glow {
+    0% { 
+        box-shadow: 0 0 12px rgba(255,0,128,1), 0 0 20px rgba(128,0,255,0.8);
+        transform: translateX(-50%) scale(1);
+    }
+    100% { 
+        box-shadow: 0 0 20px rgba(128,0,255,1), 0 0 35px rgba(0,255,128,0.9);
+        transform: translateX(-50%) scale(1.05);
+    }
 }
 
 /* ========================================

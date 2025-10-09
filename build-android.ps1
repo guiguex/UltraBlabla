@@ -4,6 +4,29 @@ Write-Host "🚀 UltraBlabla Android NDK Build Script" -ForegroundColor Green
 Write-Host "========================================" -ForegroundColor Green
 
 try {
+    # 0. Setup JAVA_HOME + Android SDK (repris de votre .bat)
+    Write-Host "☕ Setting up Java..." -ForegroundColor Yellow
+    $studio = "C:\Program Files\Android\Android Studio"
+    $jbr = Get-ChildItem "$studio\jbr*" -Directory -ErrorAction SilentlyContinue | Sort-Object Name -Descending | Select-Object -First 1
+    if (-not $jbr) { $jbr = Get-Item "$studio\jbr" -ErrorAction SilentlyContinue }
+    
+    if ($jbr) {
+        $env:JAVA_HOME = $jbr.FullName
+        $env:Path = "$env:Path;$env:JAVA_HOME\bin"
+        Write-Host "✅ JAVA_HOME: $($jbr.FullName)" -ForegroundColor Green
+        java -version
+    } else {
+        Write-Host "❌ Java not found in Android Studio" -ForegroundColor Red
+    }
+    
+    # Android SDK
+    $sdk = "$env:LOCALAPPDATA\Android\Sdk"
+    $env:ANDROID_SDK_ROOT = $sdk
+    $env:ANDROID_HOME = $sdk
+    $sdkEsc = $sdk -replace '\\','\\\\'
+    "sdk.dir=$sdkEsc" | Set-Content -Encoding ASCII -Path "android\local.properties"
+    Write-Host "✅ Android SDK: $sdk" -ForegroundColor Green
+
     # 1. Build frontend TypeScript
     Write-Host "📦 Building TypeScript..." -ForegroundColor Yellow
     bun run build
@@ -44,14 +67,11 @@ try {
     Write-Host "   - API Level: 28+" -ForegroundColor White
     Write-Host "   - Quantization: GGUF Q4_K_M optimized" -ForegroundColor White
 
-    # 6. Vérifier Java
-    if (Get-Command java -ErrorAction SilentlyContinue) {
-        Write-Host "☕ Java found. Ready for Android build." -ForegroundColor Green
-        Write-Host "   Run: .\gradlew assembleDebug (in android\ folder)" -ForegroundColor Cyan
-    } else {
-        Write-Host "⚠️  Java not found. Install JDK to build Android APK" -ForegroundColor Red
-        Write-Host "   Download: https://adoptium.net/" -ForegroundColor Cyan
-    }
+    # 6. Build APK Debug  
+    Write-Host "🔨 Building Android APK..." -ForegroundColor Yellow
+    cd android
+    .\gradlew.bat clean assembleDebug
+    cd ..
 
     Write-Host ""
     Write-Host "✅ Build preparation complete!" -ForegroundColor Green

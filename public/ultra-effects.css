@@ -1,0 +1,424 @@
+/* ========================================
+   ULTRA 2030 - ADDITIONAL EFFECTS & ANIMATIONS
+   Advanced CSS for bleeding-edge visual effects
+======================================== */
+
+/* Holographic text effect */
+@keyframes holo-flicker {
+    0%, 100% { 
+        text-shadow: 
+            0 0 5px var(--holo-primary),
+            0 0 10px var(--holo-primary),
+            0 0 15px var(--holo-primary);
+    }
+    50% { 
+        text-shadow: 
+            0 0 2px var(--holo-primary),
+            0 0 5px var(--holo-primary),
+            0 0 8px var(--holo-primary);
+    }
+}
+
+.holo-text {
+    animation: holo-flicker 3s ease-in-out infinite;
+}
+
+/* Quantum glitch effect */
+@keyframes quantum-glitch {
+    0%, 100% { transform: translate(0); }
+    10% { transform: translate(-2px, 1px); }
+    20% { transform: translate(2px, -1px); }
+    30% { transform: translate(-1px, 2px); }
+    40% { transform: translate(1px, -2px); }
+    50% { transform: translate(-2px, -1px); }
+    60% { transform: translate(2px, 1px); }
+    70% { transform: translate(-1px, -2px); }
+    80% { transform: translate(1px, 2px); }
+    90% { transform: translate(-2px, 1px); }
+}
+
+.quantum-glitch {
+    animation: quantum-glitch 0.3s ease-in-out;
+}
+
+/* Neural scan lines */
+.neural-scan::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: 
+        linear-gradient(90deg, transparent 0%, rgba(0,255,255,0.03) 50%, transparent 100%),
+        repeating-linear-gradient(
+            0deg,
+            transparent,
+            transparent 2px,
+            rgba(0,255,255,0.05) 2px,
+            rgba(0,255,255,0.05) 4px
+        );
+    pointer-events: none;
+    animation: neural-scan-sweep 3s ease-in-out infinite;
+}
+
+@keyframes neural-scan-sweep {
+    0%, 100% { transform: translateX(-100%); opacity: 0; }
+    50% { transform: translateX(100%); opacity: 1; }
+}
+
+/* Holographic border animation */
+.holo-border {
+    position: relative;
+    overflow: hidden;
+}
+
+.holo-border::before {
+    content: '';
+    position: absolute;
+    top: -50%;
+    left: -50%;
+    width: 200%;
+    height: 200%;
+    background: conic-gradient(
+        transparent,
+        var(--holo-primary),
+        transparent 30%,
+        transparent 60%,
+        var(--quantum-purple),
+        transparent 90%,
+        transparent
+    );
+    animation: holo-border-spin 4s linear infinite;
+    z-index: -1;
+}
+
+.holo-border::after {
+    content: '';
+    position: absolute;
+    inset: 2px;
+    background: var(--neural-dark);
+    border-radius: inherit;
+    z-index: -1;
+}
+
+@keyframes holo-border-spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+/* Matrix rain effect */
+.matrix-rain {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: -1;
+    opacity: 0.1;
+    background: 
+        linear-gradient(rgba(0,255,255,0) 0%, rgba(0,255,255,0.1) 100%),
+        repeating-linear-gradient(
+            90deg,
+            transparent 0%,
+            transparent 98%,
+            var(--holo-primary) 100%
+        );
+    background-size: 100% 100%, 20px 100%;
+    animation: matrix-fall 20s linear infinite;
+}
+
+@keyframes matrix-fall {
+    0% { transform: translateY(-100%); }
+    100% { transform: translateY(100vh); }
+}
+
+/* Quantum field distortion */
+.quantum-field {
+    position: absolute;
+    width: 200%;
+    height: 200%;
+    top: -50%;
+    left: -50%;
+    background: radial-gradient(
+        ellipse at center,
+        rgba(0,255,255,0.1) 0%,
+        rgba(139,92,246,0.05) 30%,
+        transparent 70%
+    );
+    animation: quantum-pulse 6s ease-in-out infinite alternate;
+    pointer-events: none;
+}
+
+@keyframes quantum-pulse {
+    0% { 
+        transform: scale(0.8) rotate(0deg);
+        opacity: 0.3;
+    }
+    100% { 
+        transform: scale(1.2) rotate(180deg);
+        opacity: 0.8;
+    }
+}
+
+/* Neural activity visualization */
+.neural-activity {
+    position: relative;
+    overflow: hidden;
+}
+
+.neural-activity::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(
+        90deg,
+        transparent,
+        rgba(0,255,255,0.4),
+        transparent
+    );
+    animation: neural-sweep 2s ease-in-out infinite;
+}
+
+@keyframes neural-sweep {
+    0% { left: -100%; }
+    100% { left: 100%; }
+}
+
+/* Holographic reflection */
+.holo-reflection {
+    position: relative;
+}
+
+.holo-reflection::after {
+    content: '';
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    height: 50%;
+    background: linear-gradient(
+        to bottom,
+        rgba(0,255,255,0.1) 0%,
+        transparent 100%
+    );
+    transform: scaleY(-1);
+    opacity: 0.3;
+    pointer-events: none;
+}
+
+/* Advanced button states */
+.neural-record-btn.processing {
+    animation: processing-spin 1s linear infinite;
+}
+
+.neural-record-btn.processing .btn-quantum-bg {
+    background: radial-gradient(
+        circle,
+        rgba(245,158,11,0.4) 0%,
+        rgba(139,92,246,0.2) 100%
+    );
+}
+
+.neural-record-btn.processing .btn-neural-core {
+    background: linear-gradient(135deg, #F59E0B, #8B5CF6);
+}
+
+@keyframes processing-spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+/* Error state animations */
+.error-state {
+    animation: error-shake 0.5s ease-in-out;
+    filter: hue-rotate(0deg) saturate(1.5);
+}
+
+@keyframes error-shake {
+    0%, 100% { transform: translateX(0); }
+    25% { transform: translateX(-5px); }
+    75% { transform: translateX(5px); }
+}
+
+.error-glow {
+    box-shadow: 
+        0 0 20px rgba(239,68,68,0.5),
+        0 0 40px rgba(239,68,68,0.3),
+        inset 0 0 20px rgba(239,68,68,0.1);
+}
+
+/* Success state animations */
+.success-state {
+    animation: success-pulse 0.6s ease-out;
+}
+
+@keyframes success-pulse {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.05); }
+    100% { transform: scale(1); }
+}
+
+.success-glow {
+    box-shadow: 
+        0 0 20px rgba(16,185,129,0.5),
+        0 0 40px rgba(16,185,129,0.3),
+        inset 0 0 20px rgba(16,185,129,0.1);
+}
+
+/* Voice wave visualization */
+.voice-waves {
+    display: flex;
+    align-items: end;
+    justify-content: center;
+    height: 40px;
+    gap: 2px;
+}
+
+.wave-bar {
+    width: 3px;
+    background: linear-gradient(to top, var(--holo-primary), var(--quantum-purple));
+    border-radius: 2px;
+    animation: wave-dance 0.8s ease-in-out infinite;
+}
+
+.wave-bar:nth-child(1) { animation-delay: 0s; }
+.wave-bar:nth-child(2) { animation-delay: 0.1s; }
+.wave-bar:nth-child(3) { animation-delay: 0.2s; }
+.wave-bar:nth-child(4) { animation-delay: 0.3s; }
+.wave-bar:nth-child(5) { animation-delay: 0.4s; }
+.wave-bar:nth-child(6) { animation-delay: 0.3s; }
+.wave-bar:nth-child(7) { animation-delay: 0.2s; }
+.wave-bar:nth-child(8) { animation-delay: 0.1s; }
+
+@keyframes wave-dance {
+    0%, 100% { height: 5px; opacity: 0.3; }
+    50% { height: 35px; opacity: 1; }
+}
+
+/* Quantum loading spinner */
+.quantum-loader {
+    width: 40px;
+    height: 40px;
+    position: relative;
+    margin: 20px auto;
+}
+
+.quantum-loader::before,
+.quantum-loader::after {
+    content: '';
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    border: 2px solid transparent;
+    border-top-color: var(--holo-primary);
+    border-radius: 50%;
+    animation: quantum-spin 1s linear infinite;
+}
+
+.quantum-loader::after {
+    border-top-color: var(--quantum-purple);
+    animation-direction: reverse;
+    animation-duration: 0.6s;
+}
+
+@keyframes quantum-spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+/* Advanced message bubble effects */
+.message-bubble.typing::after {
+    content: '●●●';
+    display: inline-block;
+    animation: typing-dots 1.4s ease-in-out infinite;
+    margin-left: 10px;
+    color: rgba(0,255,255,0.6);
+}
+
+@keyframes typing-dots {
+    0%, 60% { opacity: 0; }
+    30% { opacity: 1; }
+}
+
+/* Holographic data stream */
+.data-stream {
+    position: absolute;
+    width: 1px;
+    height: 100%;
+    background: linear-gradient(
+        to bottom,
+        transparent 0%,
+        var(--holo-primary) 50%,
+        transparent 100%
+    );
+    animation: data-flow 2s ease-in-out infinite;
+    opacity: 0.6;
+}
+
+@keyframes data-flow {
+    0% { transform: translateY(-100%); }
+    100% { transform: translateY(100%); }
+}
+
+/* Quantum interference pattern */
+.quantum-interference {
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    background: 
+        radial-gradient(circle at 30% 20%, rgba(0,255,255,0.1) 0%, transparent 50%),
+        radial-gradient(circle at 70% 80%, rgba(139,92,246,0.1) 0%, transparent 50%),
+        radial-gradient(circle at 50% 50%, rgba(236,72,153,0.05) 0%, transparent 50%);
+    animation: quantum-interference-wave 8s ease-in-out infinite;
+    pointer-events: none;
+}
+
+@keyframes quantum-interference-wave {
+    0%, 100% { 
+        transform: scale(1) rotate(0deg);
+        opacity: 0.3;
+    }
+    50% { 
+        transform: scale(1.1) rotate(180deg);
+        opacity: 0.7;
+    }
+}
+
+/* Neural network connections visualization */
+.neural-connections {
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    background-image: 
+        radial-gradient(2px 2px at 20% 30%, var(--holo-primary), transparent),
+        radial-gradient(1px 1px at 80% 70%, var(--quantum-purple), transparent),
+        radial-gradient(1px 1px at 60% 20%, var(--plasma-green), transparent);
+    background-size: 100px 100px, 150px 150px, 80px 80px;
+    animation: neural-network-pulse 10s ease-in-out infinite;
+    opacity: 0.4;
+    pointer-events: none;
+}
+
+@keyframes neural-network-pulse {
+    0%, 100% { 
+        transform: translate(0, 0) scale(1);
+        opacity: 0.4;
+    }
+    25% { 
+        transform: translate(10px, -5px) scale(1.05);
+        opacity: 0.6;
+    }
+    50% { 
+        transform: translate(-5px, 10px) scale(0.95);
+        opacity: 0.8;
+    }
+    75% { 
+        transform: translate(-10px, -10px) scale(1.02);
+        opacity: 0.5;
+    }
+}

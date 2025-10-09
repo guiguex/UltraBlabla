@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>UltraBlabla • Voice AI</title>
+    <link rel="icon" type="image/png" href="icons/icon-32.png">
+    <link rel="stylesheet" href="style.css">
+    <link rel="manifest" href="manifest.webmanifest">
+    <meta name="theme-color" content="#1a1a1a">
+</head>
+<body>
+    <div id="app">
+        <!-- Header -->
+        <header class="header">
+            <h1>🎙️ UltraBlabla</h1>
+            <div class="status" id="status">Initialisation...</div>
+        </header>
+
+        <!-- Main Content -->
+        <main class="main">
+            <!-- Messages -->
+            <div id="messages" class="messages">
+                <div class="welcome">
+                    <h2>Assistant Vocal Offline</h2>
+                    <p>Appuyez sur le micro pour commencer</p>
+                    <div class="features">
+                        <div class="feature">
+                            <span class="icon">🎤</span>
+                            <span>Vosk STT Français</span>
+                        </div>
+                        <div class="feature">
+                            <span class="icon">🧠</span>
+                            <span>Qwen3-0.6B Local</span>
+                        </div>
+                        <div class="feature">
+                            <span class="icon">🔊</span>
+                            <span>Google TTS Offline</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Controls -->
+            <div class="controls">
+                <button id="recordBtn" class="record-btn">
+                    <div class="mic-icon">🎤</div>
+                    <span class="btn-text">Parler</span>
+                    <div class="pulse-ring"></div>
+                </button>
+                
+                <div class="secondary-controls">
+                    <button id="clearBtn" class="control-btn">🗑️</button>
+                    <button id="settingsBtn" class="control-btn">⚙️</button>
+                </div>
+            </div>
+        </main>
+
+        <!-- Footer -->
+        <footer class="footer">
+            <div class="info">
+                <span class="model-info">Qwen3-0.6B • Vosk FR • 100% Offline</span>
+            </div>
+        </footer>
+    </div>
+
+    <script type="module" src="bootstrap.js"></script>
+</body>
+</html>

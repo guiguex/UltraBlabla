@@ -10,11 +10,9 @@
   "scripts": {
     "dev": "bun run --hot src/server.ts",
     "build": "bun build src/fe/webapp.ts --outfile=public/webapp.js --target=browser --minify",
-    "android:build": "bun run build && npx cap sync android && npx cap build android", 
-    "android:run": "bun run build && npx cap sync android && npx cap run android",
-    "android:open": "npx cap open android",
-    "llama:install": "./install-llama.bat",
-    "setup:complete": "npm run llama:install && npm run android:build"
+    "android:sync": "bun run build && bun x cap sync android",
+    "android:open": "bun x cap open android",
+    "android:prepare": "powershell -ExecutionPolicy Bypass -File build-android.ps1"
   },
   "dependencies": {
     "@capacitor-community/text-to-speech": "^6.0.0",

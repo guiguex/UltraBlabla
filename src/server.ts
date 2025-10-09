@@ -10,9 +10,11 @@ const app = new Elysia()
     assets: 'public',
     prefix: '/',
   }))
-  .get('/', ({ set }) => {
+  .get('/', async ({ set }) => {
     set.headers['Content-Type'] = 'text/html';
-    return Bun.file('public/index.html');
+    // Utilise fetch pour lire le fichier de manière compatible
+    const file = await fetch(new URL('../public/index.html', import.meta.url));
+    return file.text();
   })
   
   // Proxy vers UltraCoder API (Chat completion)

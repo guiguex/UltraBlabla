@@ -101,24 +101,33 @@ class UltraBlablaVoiceApp {
             return;
         }
         
-        // Configuration des callbacks natives
-        this.voice.setCallbacks?.({
-            onSpeechResult: (result: string) => {
-                this.handleSpeechResult(result);
-            },
-            onAIResponse: (response: string) => {
-                this.handleAIResponse(response);
-            },
-            onConversationStateChange: (listening: boolean, speaking: boolean) => {
-                this.isListening = listening;
-                this.isSpeaking = speaking;
-                this.updateConversationStatus();
-            },
-            onError: (error: string) => {
-                this.addMessage(`❌ Erreur native: ${error}`, 'system');
-                this.isProcessing = false;
-                this.updateConversationStatus();
+        // Configuration des événements Capacitor natifs (selon VoicePlugin.java)
+        this.voice.addListener('sttResult', (data: { text: string, type: string }) => {
+            if (data.type === 'final') {
+                this.handleSpeechResult(data.text);
             }
+        });
+        
+        this.voice.addListener('aiResponse', (data: { aiResponse: string }) => {
+            this.handleAIResponse(data.aiResponse);
+        });
+        
+        this.voice.addListener('conversationStarted', () => {
+            this.isInConversation = true;
+            this.updateConversationStatus();
+        });
+        
+        this.voice.addListener('conversationStopped', () => {
+            this.isInConversation = false;
+            this.isListening = false;
+            this.isSpeaking = false;
+            this.updateConversationStatus();
+        });
+        
+        this.voice.addListener('voiceError', (data: { error: string }) => {
+            this.addMessage(`❌ Erreur native: ${data.error}`, 'system');
+            this.isProcessing = false;
+            this.updateConversationStatus();
         });
     }
     

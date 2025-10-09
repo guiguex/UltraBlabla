@@ -13,21 +13,6 @@ jobs:
 
     steps:
     - uses: actions/checkout@v4
-    
-    - name: Setup Bun
-      uses: oven-sh/setup-bun@v1
-      with:
-        bun-version: latest
-        
-    - name: Install dependencies
-      run: bun install
-      
-    - name: Build web assets
-      run: bun run build
-      
-    - name: Sync Capacitor
-      run: bun x cap sync android
-      
     - name: set up JDK 11
       uses: actions/setup-java@v4
       with:
@@ -36,13 +21,6 @@ jobs:
         cache: gradle
 
     - name: Grant execute permission for gradlew
-      run: chmod +x android/gradlew
-      
-    - name: Build Debug APK
-      run: cd android && ./gradlew assembleDebug
-      
-    - name: Upload APK
-      uses: actions/upload-artifact@v4
-      with:
-        name: app-debug-apk
-        path: android/app/build/outputs/apk/debug/app-debug.apk
+      run: chmod +x gradlew
+    - name: Build with Gradle
+      run: ./gradlew build

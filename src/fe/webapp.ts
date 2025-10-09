@@ -133,12 +133,15 @@ class UltraBlablaVoiceApp {
         }
     }
     
-    private handleAIResponse(response: string) {
+    private async handleAIResponse(response: string) {
         if (response.trim()) {
             this.addMessage(response, 'ai');
             if (this.conversationHistory.length > 0) {
                 this.conversationHistory[this.conversationHistory.length - 1].ai = response;
             }
+            
+            // Réponse vocale automatique pour conversation ultra-dynamique
+            await this.speakResponse(response);
         }
     }
     

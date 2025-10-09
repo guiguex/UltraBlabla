@@ -2,13 +2,11 @@
   "compilerOptions": {
     "target": "ES2020",
     "lib": ["ES2020", "DOM"],
-    "module": "ES2020",
-    "moduleResolution": "Bundler",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "noEmit": true,
     "strict": true,
-    "rootDir": "./src/fe",
-    "outDir": "./public",
-    "skipLibCheck": true,
-    "noEmitOnError": false
-  },
-  "include": ["src/fe/**/*"]
+    "skipLibCheck": true
+  }
 }

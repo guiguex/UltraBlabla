@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">UltraBlabla</string>
+    <string name="title_activity_main">UltraBlabla</string>
+    <string name="package_name">com.ultrablabla.app</string>
+    <string name="custom_url_scheme">com.ultrablabla.app</string>
+</resources>

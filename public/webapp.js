@@ -1,4 +1,940 @@
-var Zh=Object.defineProperty;var $h=(h,S)=>{for(var O in S)Zh(h,O,{get:S[O],enumerable:!0,configurable:!0,set:(V)=>S[O]=()=>V})};var c=(h,S)=>()=>(h&&(S=h(h=0)),S);class _{constructor(h){if(this.listeners={},this.retainedEventArguments={},this.windowListeners={},h)console.warn(`Capacitor WebPlugin "${h.name}" config object was deprecated in v3 and will be removed in v4.`),this.config=h}addListener(h,S){let O=!1;if(!this.listeners[h])this.listeners[h]=[],O=!0;this.listeners[h].push(S);let U=this.windowListeners[h];if(U&&!U.registered)this.addWindowListener(U);if(O)this.sendRetainedArgumentsForEvent(h);return Promise.resolve({remove:async()=>this.removeListener(h,S)})}async removeAllListeners(){this.listeners={};for(let h in this.windowListeners)this.removeWindowListener(this.windowListeners[h]);this.windowListeners={}}notifyListeners(h,S,O){let V=this.listeners[h];if(!V){if(O){let U=this.retainedEventArguments[h];if(!U)U=[];U.push(S),this.retainedEventArguments[h]=U}return}V.forEach((U)=>U(S))}hasListeners(h){return!!this.listeners[h].length}registerWindowListener(h,S){this.windowListeners[S]={registered:!1,windowEventName:h,pluginEventName:S,handler:(O)=>{this.notifyListeners(S,O)}}}unimplemented(h="not implemented"){return new D.Exception(h,j.Unimplemented)}unavailable(h="not available"){return new D.Exception(h,j.Unavailable)}async removeListener(h,S){let O=this.listeners[h];if(!O)return;let V=O.indexOf(S);if(this.listeners[h].splice(V,1),!this.listeners[h].length)this.removeWindowListener(this.windowListeners[h])}addWindowListener(h){window.addEventListener(h.windowEventName,h.handler),h.registered=!0}removeWindowListener(h){if(!h)return;window.removeEventListener(h.windowEventName,h.handler),h.registered=!1}sendRetainedArgumentsForEvent(h){let S=this.retainedEventArguments[h];if(!S)return;delete this.retainedEventArguments[h],S.forEach((O)=>{this.notifyListeners(h,O)})}}var zh=(h)=>{let S=new Map;S.set("web",{name:"web"});let O=h.CapacitorPlatforms||{currentPlatform:{name:"web"},platforms:S},V=(X,Y)=>{O.platforms.set(X,Y)},U=(X)=>{if(O.platforms.has(X))O.currentPlatform=O.platforms.get(X)};return O.addPlatform=V,O.setPlatform=U,O},Kh=(h)=>h.CapacitorPlatforms=zh(h),g,Wh,Rh,j,I,qh=(h)=>{var S,O;if(h===null||h===void 0?void 0:h.androidBridge)return"android";else if((O=(S=h===null||h===void 0?void 0:h.webkit)===null||S===void 0?void 0:S.messageHandlers)===null||O===void 0?void 0:O.bridge)return"ios";else return"web"},Gh=(h)=>{var S,O,V,U,X;let Y=h.CapacitorCustomPlatform||null,J=h.Capacitor||{},$=J.Plugins=J.Plugins||{},Z=h.CapacitorPlatforms,L=()=>{return Y!==null?Y.name:qh(h)},R=((S=Z===null||Z===void 0?void 0:Z.currentPlatform)===null||S===void 0?void 0:S.getPlatform)||L,n=()=>R()!=="web",t=((O=Z===null||Z===void 0?void 0:Z.currentPlatform)===null||O===void 0?void 0:O.isNativePlatform)||n,a=(z)=>{let K=f.get(z);if(K===null||K===void 0?void 0:K.platforms.has(R()))return!0;if(N(z))return!0;return!1},e=((V=Z===null||Z===void 0?void 0:Z.currentPlatform)===null||V===void 0?void 0:V.isPluginAvailable)||a,hh=(z)=>{var K;return(K=J.PluginHeaders)===null||K===void 0?void 0:K.find((H)=>H.name===z)},N=((U=Z===null||Z===void 0?void 0:Z.currentPlatform)===null||U===void 0?void 0:U.getPluginHeader)||hh,Sh=(z)=>h.console.error(z),Oh=(z,K,H)=>{return Promise.reject(`${H} does not have an implementation of "${K}".`)},f=new Map,Uh=(z,K={})=>{let H=f.get(z);if(H)return console.warn(`Capacitor plugin "${z}" already registered. Cannot register plugins twice.`),H.proxy;let W=R(),T=N(z),F,Jh=async()=>{if(!F&&W in K)F=typeof K[W]==="function"?F=await K[W]():F=K[W];else if(Y!==null&&!F&&"web"in K)F=typeof K.web==="function"?F=await K.web():F=K.web;return F},Xh=(q,G)=>{var B,Q;if(T){let M=T===null||T===void 0?void 0:T.methods.find((A)=>G===A.name);if(M)if(M.rtype==="promise")return(A)=>J.nativePromise(z,G.toString(),A);else return(A,E)=>J.nativeCallback(z,G.toString(),A,E);else if(q)return(B=q[G])===null||B===void 0?void 0:B.bind(q)}else if(q)return(Q=q[G])===null||Q===void 0?void 0:Q.bind(q);else throw new I(`"${z}" plugin is not implemented on ${W}`,j.Unimplemented)},C=(q)=>{let G,B=(...Q)=>{let M=Jh().then((A)=>{let E=Xh(A,q);if(E){let y=E(...Q);return G=y===null||y===void 0?void 0:y.remove,y}else throw new I(`"${z}.${q}()" is not implemented on ${W}`,j.Unimplemented)});if(q==="addListener")M.remove=async()=>G();return M};return B.toString=()=>`${q.toString()}() { [capacitor code] }`,Object.defineProperty(B,"name",{value:q,writable:!1,configurable:!1}),B},v=C("addListener"),P=C("removeListener"),Yh=(q,G)=>{let B=v({eventName:q},G),Q=async()=>{let A=await B;P({eventName:q,callbackId:A},G)},M=new Promise((A)=>B.then(()=>A({remove:Q})));return M.remove=async()=>{console.warn("Using addListener() without 'await' is deprecated."),await Q()},M},x=new Proxy({},{get(q,G){switch(G){case"$$typeof":return;case"toJSON":return()=>({});case"addListener":return T?Yh:v;case"removeListener":return P;default:return C(G)}}});return $[z]=x,f.set(z,{name:z,proxy:x,platforms:new Set([...Object.keys(K),...T?[W]:[]])}),x},Vh=((X=Z===null||Z===void 0?void 0:Z.currentPlatform)===null||X===void 0?void 0:X.registerPlugin)||Uh;if(!J.convertFileSrc)J.convertFileSrc=(z)=>z;return J.getPlatform=R,J.handleError=Sh,J.isNativePlatform=t,J.isPluginAvailable=e,J.pluginMethodNoop=Oh,J.registerPlugin=Vh,J.Exception=I,J.DEBUG=!!J.DEBUG,J.isLoggingEnabled=!!J.isLoggingEnabled,J.platform=J.getPlatform(),J.isNative=J.isNativePlatform(),J},Ah=(h)=>h.Capacitor=Gh(h),D,w,Hh,d=(h)=>encodeURIComponent(h).replace(/%(2[346B]|5E|60|7C)/g,decodeURIComponent).replace(/[()]/g,escape),u=(h)=>h.replace(/(%[\dA-F]{2})+/gi,decodeURIComponent),l,Th,Lh=async(h)=>new Promise((S,O)=>{let V=new FileReader;V.onload=()=>{let U=V.result;S(U.indexOf(",")>=0?U.split(",")[1]:U)},V.onerror=(U)=>O(U),V.readAsDataURL(h)}),Bh=(h={})=>{let S=Object.keys(h);return Object.keys(h).map((U)=>U.toLocaleLowerCase()).reduce((U,X,Y)=>{return U[X]=h[S[Y]],U},{})},Fh=(h,S=!0)=>{if(!h)return null;return Object.entries(h).reduce((V,U)=>{let[X,Y]=U,J,$;if(Array.isArray(Y))$="",Y.forEach((Z)=>{J=S?encodeURIComponent(Z):Z,$+=`${X}=${J}&`}),$.slice(0,-1);else J=S?encodeURIComponent(Y):Y,$=`${X}=${J}`;return`${V}&${$}`},"").substr(1)},Dh=(h,S={})=>{let O=Object.assign({method:h.method||"GET",headers:h.headers},S),U=Bh(h.headers)["content-type"]||"";if(typeof h.data==="string")O.body=h.data;else if(U.includes("application/x-www-form-urlencoded")){let X=new URLSearchParams;for(let[Y,J]of Object.entries(h.data||{}))X.set(Y,J);O.body=X.toString()}else if(U.includes("multipart/form-data")||h.data instanceof FormData){let X=new FormData;if(h.data instanceof FormData)h.data.forEach((J,$)=>{X.append($,J)});else for(let J of Object.keys(h.data))X.append(J,h.data[J]);O.body=X;let Y=new Headers(O.headers);Y.delete("content-type"),O.headers=Y}else if(U.includes("application/json")||typeof h.data==="object")O.body=JSON.stringify(h.data);return O},m,jh;var b=c(()=>{/*! Capacitor: https://capacitorjs.com/ - MIT License */g=Kh(typeof globalThis<"u"?globalThis:typeof self<"u"?self:typeof window<"u"?window:typeof global<"u"?global:{}),Wh=g.addPlatform,Rh=g.setPlatform;(function(h){h.Unimplemented="UNIMPLEMENTED",h.Unavailable="UNAVAILABLE"})(j||(j={}));I=class I extends Error{constructor(h,S,O){super(h);this.message=h,this.code=S,this.data=O}};D=Ah(typeof globalThis<"u"?globalThis:typeof self<"u"?self:typeof window<"u"?window:typeof global<"u"?global:{}),w=D.registerPlugin,Hh=D.Plugins;l=class l extends _{async getCookies(){let h=document.cookie,S={};return h.split(";").forEach((O)=>{if(O.length<=0)return;let[V,U]=O.replace(/=/,"CAP_COOKIE").split("CAP_COOKIE");V=u(V).trim(),U=u(U).trim(),S[V]=U}),S}async setCookie(h){try{let S=d(h.key),O=d(h.value),V=`; expires=${(h.expires||"").replace("expires=","")}`,U=(h.path||"/").replace("path=",""),X=h.url!=null&&h.url.length>0?`domain=${h.url}`:"";document.cookie=`${S}=${O||""}${V}; path=${U}; ${X};`}catch(S){return Promise.reject(S)}}async deleteCookie(h){try{document.cookie=`${h.key}=; Max-Age=0`}catch(S){return Promise.reject(S)}}async clearCookies(){try{let h=document.cookie.split(";")||[];for(let S of h)document.cookie=S.replace(/^ +/,"").replace(/=.*/,`=;expires=${new Date().toUTCString()};path=/`)}catch(h){return Promise.reject(h)}}async clearAllCookies(){try{await this.clearCookies()}catch(h){return Promise.reject(h)}}};Th=w("CapacitorCookies",{web:()=>new l});m=class m extends _{async request(h){let S=Dh(h,h.webFetchExtra),O=Fh(h.params,h.shouldEncodeUrlParams),V=O?`${h.url}?${O}`:h.url,U=await fetch(V,S),X=U.headers.get("content-type")||"",{responseType:Y="text"}=U.ok?h:{};if(X.includes("application/json"))Y="json";let J,$;switch(Y){case"arraybuffer":case"blob":$=await U.blob(),J=await Lh($);break;case"json":J=await U.json();break;case"document":case"text":default:J=await U.text()}let Z={};return U.headers.forEach((L,R)=>{Z[R]=L}),{data:J,headers:Z,status:U.status,url:U.url}}async get(h){return this.request(Object.assign(Object.assign({},h),{method:"GET"}))}async post(h){return this.request(Object.assign(Object.assign({},h),{method:"POST"}))}async put(h){return this.request(Object.assign(Object.assign({},h),{method:"PUT"}))}async patch(h){return this.request(Object.assign(Object.assign({},h),{method:"PATCH"}))}async delete(h){return this.request(Object.assign(Object.assign({},h),{method:"DELETE"}))}};jh=w("CapacitorHttp",{web:()=>new m})});var i={};$h(i,{TextToSpeechWeb:()=>p});var p;var s=c(()=>{b();p=class p extends _{constructor(){super();if(this.speechSynthesis=null,"speechSynthesis"in window)this.speechSynthesis=window.speechSynthesis,window.addEventListener("beforeunload",()=>{this.stop()})}async speak(h){if(!this.speechSynthesis)this.throwUnsupportedError();await this.stop();let S=this.speechSynthesis,O=this.createSpeechSynthesisUtterance(h);return new Promise((V,U)=>{O.onend=()=>{V()},O.onerror=(X)=>{U(X)},S.speak(O)})}async stop(){if(!this.speechSynthesis)this.throwUnsupportedError();this.speechSynthesis.cancel()}async getSupportedLanguages(){return{languages:this.getSpeechSynthesisVoices().map((V)=>V.lang).filter((V,U,X)=>X.indexOf(V)==U)}}async getSupportedVoices(){return{voices:this.getSpeechSynthesisVoices()}}async isLanguageSupported(h){return{supported:(await this.getSupportedLanguages()).languages.includes(h.lang)}}async openInstall(){this.throwUnimplementedError()}createSpeechSynthesisUtterance(h){let S=this.getSpeechSynthesisVoices(),O=new SpeechSynthesisUtterance,{text:V,lang:U,rate:X,pitch:Y,volume:J,voice:$}=h;if($)O.voice=S[$];if(J)O.volume=J>=0&&J<=1?J:1;if(X)O.rate=X>=0.1&&X<=10?X:1;if(Y)O.pitch=Y>=0&&Y<=2?Y:2;if(U)O.lang=U;return O.text=V,O}getSpeechSynthesisVoices(){if(!this.speechSynthesis)this.throwUnsupportedError();if(!this.supportedVoices||this.supportedVoices.length<1)this.supportedVoices=this.speechSynthesis.getVoices();return this.supportedVoices}throwUnsupportedError(){throw this.unavailable("SpeechSynthesis API not available in this browser.")}throwUnimplementedError(){throw this.unimplemented("Not implemented on web.")}}});b();b();var r;(function(h){h[h.Flush=0]="Flush",h[h.Add=1]="Add"})(r||(r={}));var k=w("TextToSpeech",{web:()=>Promise.resolve().then(() => (s(),i)).then((h)=>new h.TextToSpeechWeb)});if("speechSynthesis"in window)window.speechSynthesis;var Qh=w("Voice");class o{isInConversation=!1;isListening=!1;isProcessing=!1;isSpeaking=!1;recordBtn;messages;status;clearBtn;voice;conversationHistory=[];constructor(){this.voice=Qh,document.addEventListener("DOMContentLoaded",()=>{this.initializeElements(),this.setupEventListeners(),this.setupVoiceCallbacks(),this.initializeChatBox(),this.initializeApp()})}initializeElements(){this.recordBtn=document.getElementById("recordBtn"),this.messages=document.getElementById("messages"),this.status=document.getElementById("status"),this.clearBtn=document.getElementById("clearBtn")}setupEventListeners(){this.recordBtn?.addEventListener("click",()=>this.toggleConversation()),this.clearBtn?.addEventListener("click",()=>this.clearMessages()),document.getElementById("settingsBtn")?.addEventListener("click",()=>{this.showSettings()}),document.addEventListener("touchstart",()=>{if(this.isSpeaking){if(D.isNativePlatform())this.voice.pauseListening()}})}setupVoiceCallbacks(){if(!D.isNativePlatform()){console.warn("Plugin Voice disponible uniquement en mode natif");return}this.voice.addListener("sttResult",(h)=>{if(h.type==="final")this.handleSpeechResult(h.text);else if(h.type==="partial")this.updateStatus(`\uD83C\uDFA7 ${h.text}`,"listening")}),this.voice.addListener("aiResponse",(h)=>{this.handleAIResponse(h)}),this.voice.addListener("llmProcessing",(h)=>{if(this.isProcessing=h.status==="processing",h.status==="processing")this.updateStatus("\uD83E\uDDE0 IA réfléchit...","processing");else if(h.status==="error")this.updateStatus("❌ Erreur LLM","error")}),this.voice.addListener("llmError",(h)=>{this.isProcessing=!1,this.addMessage(`❌ Erreur LLM: ${h.error}`,"system"),this.updateConversationStatus()}),this.voice.addListener("listeningStarted",()=>{this.isListening=!0,this.updateConversationStatus()}),this.voice.addListener("listeningStopped",()=>{this.isListening=!1,this.updateConversationStatus()}),this.voice.addListener("conversationStarted",()=>{this.isInConversation=!0,this.updateConversationStatus()}),this.voice.addListener("conversationStopped",()=>{this.isInConversation=!1,this.isListening=!1,this.isSpeaking=!1,this.updateConversationStatus()}),this.voice.addListener("sttError",(h)=>{console.error("STT Error:",h.error),this.addMessage("❌ Erreur de reconnaissance vocale","system"),this.updateStatus("Prêt • 100% Offline","online"),this.isInConversation=!1,this.recordBtn.classList.remove("conversation"),this.recordBtn.querySelector(".btn-text").textContent="Parler"}),this.voice.addListener("voiceError",(h)=>{this.addMessage(`❌ Erreur native: ${h.error}`,"system"),this.isProcessing=!1,this.updateConversationStatus()}),this.voice.addListener("sttResult",(h)=>{if(h.type==="final")this.handleSpeechResult(h.text);else if(h.type==="partial")this.updateStatus(`\uD83C\uDFA7 ${h.text}`,"listening")}),this.voice.addListener("aiResponse",(h)=>{this.handleAIResponse(h)}),this.voice.addListener("voiceActivity",(h)=>{this.updateVoiceIndicator(h.active,h.level)})}handleSpeechResult(h){if(h.trim())this.addMessage(h,"user"),this.conversationHistory.push({user:h,ai:"",timestamp:Date.now()})}async handleAIResponse(h){let S=h.userText?.trim()??"",O=h.aiResponse?.trim()??"";if(S){let V=this.conversationHistory[this.conversationHistory.length-1];if(!V||V.user!==S)this.addMessage(S,"user"),this.conversationHistory.push({user:S,ai:"",timestamp:h.timestamp||Date.now()})}if(O){if(this.addMessage(O,"ai"),this.conversationHistory.length>0)this.conversationHistory[this.conversationHistory.length-1].ai=O;this.isSpeaking=!0,this.updateConversationStatus();try{await this.speakResponse(O)}finally{this.isSpeaking=!1,this.updateConversationStatus()}}}updateConversationStatus(){let h="",S;if(this.isInConversation)if(this.isSpeaking)h="\uD83C\uDF99️ IA parle... (touchez pour interrompre)",S="speaking";else if(this.isListening)h="\uD83D\uDC42 À l'écoute... (parlez naturellement)",S="listening";else if(this.isProcessing)h="\uD83E\uDDE0 Traitement...",S="processing";else h="\uD83D\uDCAC Conversation active",S="active";else h="⏸️ Conversation en pause",S="paused";this.updateStatus(h,S)}async initializeApp(){if(this.updateStatus("Initialisation...","loading"),D.isNativePlatform())await this.initializeNativePlugins();else this.updateStatus("Mode Web - Fonctionnalités limitées","warning"),this.addMessage("⚠️ Pour toutes les fonctionnalités, utilisez l'application Android","system")}async initializeNativePlugins(){try{let h=await this.voice.checkPermissions();this.addMessage("\uD83C\uDF99️ Vérification permissions microphone...","system");let S=await this.voice.init();if(!S.ok){if(S.permissionDenied)this.updateStatus("Permission microphone refusée","error"),this.addMessage("❌ Permission microphone refusée - Autorisez le microphone dans les paramètres Android","system");else this.updateStatus("Erreur initialisation audio","error"),this.addMessage("❌ Impossible d'initialiser le moteur vocal natif","system");return}this.addMessage("✅ Moteur vocal initialisé (Vosk STT + Qwen3 LLM)","system"),await this.initializeTTS(),this.updateStatus("Prêt • 100% Offline","online")}catch(h){console.error("Error initializing native plugins:",h),this.updateStatus("Erreur d'initialisation","error"),this.addMessage("❌ Erreur lors de l'initialisation des plugins natifs","system")}}async initializeTTS(){try{if((await k.getSupportedVoices()).voices.filter((O)=>O.lang?.startsWith("fr")).length===0)await k.openInstall(),this.addMessage("\uD83D\uDCE5 Installez les voix françaises pour le TTS","system")}catch(h){console.warn("TTS initialization warning:",h)}}async toggleConversation(){if(this.isProcessing)return;if(this.isInConversation)await this.stopConversation();else await this.startConversation()}async startConversation(){if(!D.isNativePlatform()||!this.voice){this.addMessage("❌ Conversation native disponible uniquement sur Android","system");return}try{let h=await this.voice.startConversation();if(h.permissionDenied){this.addMessage("❌ Permission microphone refusée - Activez-la dans les paramètres Android","system");return}if(!h.started){this.addMessage("❌ Impossible de démarrer la conversation - "+(h.error||"Erreur inconnue"),"system");return}this.isInConversation=!0,this.recordBtn.classList.add("conversation"),this.recordBtn.querySelector(".btn-text").textContent="Conversation Active",this.addMessage("▶️ Conversation ultra dynamique démarrée ! Parlez naturellement...","system"),this.updateConversationStatus()}catch(h){console.error("Erreur démarrage conversation:",h),this.addMessage("❌ Erreur lors du démarrage de la conversation","system")}}async stopConversation(){if(!this.isInConversation||!this.voice)return;try{await this.voice.stopConversation(),this.isInConversation=!1,this.recordBtn.classList.remove("conversation"),this.recordBtn.classList.remove("recording"),this.recordBtn.querySelector(".btn-text").textContent="Parler",this.updateStatus("⏳ Traitement...","processing")}catch(h){console.error("Error stopping recording:",h),this.addMessage("❌ Erreur lors de l'arrêt de l'enregistrement","system")}}async speakResponse(h){try{await k.speak({text:h,lang:"fr-FR",rate:1,pitch:1,volume:1,category:"ambient"})}catch(S){console.warn("TTS Error:",S),this.addMessage("⚠️ TTS non disponible - installez les voix françaises","system")}}addMessage(h,S){let O=this.messages.querySelector(".welcome");if(O)O.remove();let V=document.createElement("div");if(V.className=`message ${S}-message`,V.textContent=h,this.messages.appendChild(V),this.messages.scrollTop=this.messages.scrollHeight,S!=="system")this.saveToHistory(h,S)}clearMessages(){this.messages.innerHTML=`
+var __defProp = Object.defineProperty;
+var __export = (target, all) => {
+  for (var name in all)
+    __defProp(target, name, {
+      get: all[name],
+      enumerable: true,
+      configurable: true,
+      set: (newValue) => all[name] = () => newValue
+    });
+};
+var __esm = (fn, res) => () => (fn && (res = fn(fn = 0)), res);
+
+// node_modules/@capacitor/core/dist/index.js
+class WebPlugin {
+  constructor(config) {
+    this.listeners = {};
+    this.retainedEventArguments = {};
+    this.windowListeners = {};
+    if (config) {
+      console.warn(`Capacitor WebPlugin "${config.name}" config object was deprecated in v3 and will be removed in v4.`);
+      this.config = config;
+    }
+  }
+  addListener(eventName, listenerFunc) {
+    let firstListener = false;
+    const listeners = this.listeners[eventName];
+    if (!listeners) {
+      this.listeners[eventName] = [];
+      firstListener = true;
+    }
+    this.listeners[eventName].push(listenerFunc);
+    const windowListener = this.windowListeners[eventName];
+    if (windowListener && !windowListener.registered) {
+      this.addWindowListener(windowListener);
+    }
+    if (firstListener) {
+      this.sendRetainedArgumentsForEvent(eventName);
+    }
+    const remove = async () => this.removeListener(eventName, listenerFunc);
+    const p = Promise.resolve({ remove });
+    return p;
+  }
+  async removeAllListeners() {
+    this.listeners = {};
+    for (const listener in this.windowListeners) {
+      this.removeWindowListener(this.windowListeners[listener]);
+    }
+    this.windowListeners = {};
+  }
+  notifyListeners(eventName, data, retainUntilConsumed) {
+    const listeners = this.listeners[eventName];
+    if (!listeners) {
+      if (retainUntilConsumed) {
+        let args = this.retainedEventArguments[eventName];
+        if (!args) {
+          args = [];
+        }
+        args.push(data);
+        this.retainedEventArguments[eventName] = args;
+      }
+      return;
+    }
+    listeners.forEach((listener) => listener(data));
+  }
+  hasListeners(eventName) {
+    return !!this.listeners[eventName].length;
+  }
+  registerWindowListener(windowEventName, pluginEventName) {
+    this.windowListeners[pluginEventName] = {
+      registered: false,
+      windowEventName,
+      pluginEventName,
+      handler: (event) => {
+        this.notifyListeners(pluginEventName, event);
+      }
+    };
+  }
+  unimplemented(msg = "not implemented") {
+    return new Capacitor.Exception(msg, ExceptionCode.Unimplemented);
+  }
+  unavailable(msg = "not available") {
+    return new Capacitor.Exception(msg, ExceptionCode.Unavailable);
+  }
+  async removeListener(eventName, listenerFunc) {
+    const listeners = this.listeners[eventName];
+    if (!listeners) {
+      return;
+    }
+    const index = listeners.indexOf(listenerFunc);
+    this.listeners[eventName].splice(index, 1);
+    if (!this.listeners[eventName].length) {
+      this.removeWindowListener(this.windowListeners[eventName]);
+    }
+  }
+  addWindowListener(handle) {
+    window.addEventListener(handle.windowEventName, handle.handler);
+    handle.registered = true;
+  }
+  removeWindowListener(handle) {
+    if (!handle) {
+      return;
+    }
+    window.removeEventListener(handle.windowEventName, handle.handler);
+    handle.registered = false;
+  }
+  sendRetainedArgumentsForEvent(eventName) {
+    const args = this.retainedEventArguments[eventName];
+    if (!args) {
+      return;
+    }
+    delete this.retainedEventArguments[eventName];
+    args.forEach((arg) => {
+      this.notifyListeners(eventName, arg);
+    });
+  }
+}
+var createCapacitorPlatforms = (win) => {
+  const defaultPlatformMap = new Map;
+  defaultPlatformMap.set("web", { name: "web" });
+  const capPlatforms = win.CapacitorPlatforms || {
+    currentPlatform: { name: "web" },
+    platforms: defaultPlatformMap
+  };
+  const addPlatform = (name, platform) => {
+    capPlatforms.platforms.set(name, platform);
+  };
+  const setPlatform = (name) => {
+    if (capPlatforms.platforms.has(name)) {
+      capPlatforms.currentPlatform = capPlatforms.platforms.get(name);
+    }
+  };
+  capPlatforms.addPlatform = addPlatform;
+  capPlatforms.setPlatform = setPlatform;
+  return capPlatforms;
+}, initPlatforms = (win) => win.CapacitorPlatforms = createCapacitorPlatforms(win), CapacitorPlatforms, addPlatform, setPlatform, ExceptionCode, CapacitorException, getPlatformId = (win) => {
+  var _a, _b;
+  if (win === null || win === undefined ? undefined : win.androidBridge) {
+    return "android";
+  } else if ((_b = (_a = win === null || win === undefined ? undefined : win.webkit) === null || _a === undefined ? undefined : _a.messageHandlers) === null || _b === undefined ? undefined : _b.bridge) {
+    return "ios";
+  } else {
+    return "web";
+  }
+}, createCapacitor = (win) => {
+  var _a, _b, _c, _d, _e;
+  const capCustomPlatform = win.CapacitorCustomPlatform || null;
+  const cap = win.Capacitor || {};
+  const Plugins = cap.Plugins = cap.Plugins || {};
+  const capPlatforms = win.CapacitorPlatforms;
+  const defaultGetPlatform = () => {
+    return capCustomPlatform !== null ? capCustomPlatform.name : getPlatformId(win);
+  };
+  const getPlatform = ((_a = capPlatforms === null || capPlatforms === undefined ? undefined : capPlatforms.currentPlatform) === null || _a === undefined ? undefined : _a.getPlatform) || defaultGetPlatform;
+  const defaultIsNativePlatform = () => getPlatform() !== "web";
+  const isNativePlatform = ((_b = capPlatforms === null || capPlatforms === undefined ? undefined : capPlatforms.currentPlatform) === null || _b === undefined ? undefined : _b.isNativePlatform) || defaultIsNativePlatform;
+  const defaultIsPluginAvailable = (pluginName) => {
+    const plugin = registeredPlugins.get(pluginName);
+    if (plugin === null || plugin === undefined ? undefined : plugin.platforms.has(getPlatform())) {
+      return true;
+    }
+    if (getPluginHeader(pluginName)) {
+      return true;
+    }
+    return false;
+  };
+  const isPluginAvailable = ((_c = capPlatforms === null || capPlatforms === undefined ? undefined : capPlatforms.currentPlatform) === null || _c === undefined ? undefined : _c.isPluginAvailable) || defaultIsPluginAvailable;
+  const defaultGetPluginHeader = (pluginName) => {
+    var _a2;
+    return (_a2 = cap.PluginHeaders) === null || _a2 === undefined ? undefined : _a2.find((h) => h.name === pluginName);
+  };
+  const getPluginHeader = ((_d = capPlatforms === null || capPlatforms === undefined ? undefined : capPlatforms.currentPlatform) === null || _d === undefined ? undefined : _d.getPluginHeader) || defaultGetPluginHeader;
+  const handleError = (err) => win.console.error(err);
+  const pluginMethodNoop = (_target, prop, pluginName) => {
+    return Promise.reject(`${pluginName} does not have an implementation of "${prop}".`);
+  };
+  const registeredPlugins = new Map;
+  const defaultRegisterPlugin = (pluginName, jsImplementations = {}) => {
+    const registeredPlugin = registeredPlugins.get(pluginName);
+    if (registeredPlugin) {
+      console.warn(`Capacitor plugin "${pluginName}" already registered. Cannot register plugins twice.`);
+      return registeredPlugin.proxy;
+    }
+    const platform = getPlatform();
+    const pluginHeader = getPluginHeader(pluginName);
+    let jsImplementation;
+    const loadPluginImplementation = async () => {
+      if (!jsImplementation && platform in jsImplementations) {
+        jsImplementation = typeof jsImplementations[platform] === "function" ? jsImplementation = await jsImplementations[platform]() : jsImplementation = jsImplementations[platform];
+      } else if (capCustomPlatform !== null && !jsImplementation && "web" in jsImplementations) {
+        jsImplementation = typeof jsImplementations["web"] === "function" ? jsImplementation = await jsImplementations["web"]() : jsImplementation = jsImplementations["web"];
+      }
+      return jsImplementation;
+    };
+    const createPluginMethod = (impl, prop) => {
+      var _a2, _b2;
+      if (pluginHeader) {
+        const methodHeader = pluginHeader === null || pluginHeader === undefined ? undefined : pluginHeader.methods.find((m) => prop === m.name);
+        if (methodHeader) {
+          if (methodHeader.rtype === "promise") {
+            return (options) => cap.nativePromise(pluginName, prop.toString(), options);
+          } else {
+            return (options, callback) => cap.nativeCallback(pluginName, prop.toString(), options, callback);
+          }
+        } else if (impl) {
+          return (_a2 = impl[prop]) === null || _a2 === undefined ? undefined : _a2.bind(impl);
+        }
+      } else if (impl) {
+        return (_b2 = impl[prop]) === null || _b2 === undefined ? undefined : _b2.bind(impl);
+      } else {
+        throw new CapacitorException(`"${pluginName}" plugin is not implemented on ${platform}`, ExceptionCode.Unimplemented);
+      }
+    };
+    const createPluginMethodWrapper = (prop) => {
+      let remove;
+      const wrapper = (...args) => {
+        const p = loadPluginImplementation().then((impl) => {
+          const fn = createPluginMethod(impl, prop);
+          if (fn) {
+            const p2 = fn(...args);
+            remove = p2 === null || p2 === undefined ? undefined : p2.remove;
+            return p2;
+          } else {
+            throw new CapacitorException(`"${pluginName}.${prop}()" is not implemented on ${platform}`, ExceptionCode.Unimplemented);
+          }
+        });
+        if (prop === "addListener") {
+          p.remove = async () => remove();
+        }
+        return p;
+      };
+      wrapper.toString = () => `${prop.toString()}() { [capacitor code] }`;
+      Object.defineProperty(wrapper, "name", {
+        value: prop,
+        writable: false,
+        configurable: false
+      });
+      return wrapper;
+    };
+    const addListener = createPluginMethodWrapper("addListener");
+    const removeListener = createPluginMethodWrapper("removeListener");
+    const addListenerNative = (eventName, callback) => {
+      const call = addListener({ eventName }, callback);
+      const remove = async () => {
+        const callbackId = await call;
+        removeListener({
+          eventName,
+          callbackId
+        }, callback);
+      };
+      const p = new Promise((resolve) => call.then(() => resolve({ remove })));
+      p.remove = async () => {
+        console.warn(`Using addListener() without 'await' is deprecated.`);
+        await remove();
+      };
+      return p;
+    };
+    const proxy = new Proxy({}, {
+      get(_, prop) {
+        switch (prop) {
+          case "$$typeof":
+            return;
+          case "toJSON":
+            return () => ({});
+          case "addListener":
+            return pluginHeader ? addListenerNative : addListener;
+          case "removeListener":
+            return removeListener;
+          default:
+            return createPluginMethodWrapper(prop);
+        }
+      }
+    });
+    Plugins[pluginName] = proxy;
+    registeredPlugins.set(pluginName, {
+      name: pluginName,
+      proxy,
+      platforms: new Set([
+        ...Object.keys(jsImplementations),
+        ...pluginHeader ? [platform] : []
+      ])
+    });
+    return proxy;
+  };
+  const registerPlugin = ((_e = capPlatforms === null || capPlatforms === undefined ? undefined : capPlatforms.currentPlatform) === null || _e === undefined ? undefined : _e.registerPlugin) || defaultRegisterPlugin;
+  if (!cap.convertFileSrc) {
+    cap.convertFileSrc = (filePath) => filePath;
+  }
+  cap.getPlatform = getPlatform;
+  cap.handleError = handleError;
+  cap.isNativePlatform = isNativePlatform;
+  cap.isPluginAvailable = isPluginAvailable;
+  cap.pluginMethodNoop = pluginMethodNoop;
+  cap.registerPlugin = registerPlugin;
+  cap.Exception = CapacitorException;
+  cap.DEBUG = !!cap.DEBUG;
+  cap.isLoggingEnabled = !!cap.isLoggingEnabled;
+  cap.platform = cap.getPlatform();
+  cap.isNative = cap.isNativePlatform();
+  return cap;
+}, initCapacitorGlobal = (win) => win.Capacitor = createCapacitor(win), Capacitor, registerPlugin, Plugins, encode = (str) => encodeURIComponent(str).replace(/%(2[346B]|5E|60|7C)/g, decodeURIComponent).replace(/[()]/g, escape), decode = (str) => str.replace(/(%[\dA-F]{2})+/gi, decodeURIComponent), CapacitorCookiesPluginWeb, CapacitorCookies, readBlobAsBase64 = async (blob) => new Promise((resolve, reject) => {
+  const reader = new FileReader;
+  reader.onload = () => {
+    const base64String = reader.result;
+    resolve(base64String.indexOf(",") >= 0 ? base64String.split(",")[1] : base64String);
+  };
+  reader.onerror = (error) => reject(error);
+  reader.readAsDataURL(blob);
+}), normalizeHttpHeaders = (headers = {}) => {
+  const originalKeys = Object.keys(headers);
+  const loweredKeys = Object.keys(headers).map((k) => k.toLocaleLowerCase());
+  const normalized = loweredKeys.reduce((acc, key, index) => {
+    acc[key] = headers[originalKeys[index]];
+    return acc;
+  }, {});
+  return normalized;
+}, buildUrlParams = (params, shouldEncode = true) => {
+  if (!params)
+    return null;
+  const output = Object.entries(params).reduce((accumulator, entry) => {
+    const [key, value] = entry;
+    let encodedValue;
+    let item;
+    if (Array.isArray(value)) {
+      item = "";
+      value.forEach((str) => {
+        encodedValue = shouldEncode ? encodeURIComponent(str) : str;
+        item += `${key}=${encodedValue}&`;
+      });
+      item.slice(0, -1);
+    } else {
+      encodedValue = shouldEncode ? encodeURIComponent(value) : value;
+      item = `${key}=${encodedValue}`;
+    }
+    return `${accumulator}&${item}`;
+  }, "");
+  return output.substr(1);
+}, buildRequestInit = (options, extra = {}) => {
+  const output = Object.assign({ method: options.method || "GET", headers: options.headers }, extra);
+  const headers = normalizeHttpHeaders(options.headers);
+  const type = headers["content-type"] || "";
+  if (typeof options.data === "string") {
+    output.body = options.data;
+  } else if (type.includes("application/x-www-form-urlencoded")) {
+    const params = new URLSearchParams;
+    for (const [key, value] of Object.entries(options.data || {})) {
+      params.set(key, value);
+    }
+    output.body = params.toString();
+  } else if (type.includes("multipart/form-data") || options.data instanceof FormData) {
+    const form = new FormData;
+    if (options.data instanceof FormData) {
+      options.data.forEach((value, key) => {
+        form.append(key, value);
+      });
+    } else {
+      for (const key of Object.keys(options.data)) {
+        form.append(key, options.data[key]);
+      }
+    }
+    output.body = form;
+    const headers2 = new Headers(output.headers);
+    headers2.delete("content-type");
+    output.headers = headers2;
+  } else if (type.includes("application/json") || typeof options.data === "object") {
+    output.body = JSON.stringify(options.data);
+  }
+  return output;
+}, CapacitorHttpPluginWeb, CapacitorHttp;
+var init_dist = __esm(() => {
+  /*! Capacitor: https://capacitorjs.com/ - MIT License */
+  CapacitorPlatforms = /* @__PURE__ */ initPlatforms(typeof globalThis !== "undefined" ? globalThis : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : typeof global !== "undefined" ? global : {});
+  addPlatform = CapacitorPlatforms.addPlatform;
+  setPlatform = CapacitorPlatforms.setPlatform;
+  (function(ExceptionCode2) {
+    ExceptionCode2["Unimplemented"] = "UNIMPLEMENTED";
+    ExceptionCode2["Unavailable"] = "UNAVAILABLE";
+  })(ExceptionCode || (ExceptionCode = {}));
+  CapacitorException = class CapacitorException extends Error {
+    constructor(message, code, data) {
+      super(message);
+      this.message = message;
+      this.code = code;
+      this.data = data;
+    }
+  };
+  Capacitor = /* @__PURE__ */ initCapacitorGlobal(typeof globalThis !== "undefined" ? globalThis : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : typeof global !== "undefined" ? global : {});
+  registerPlugin = Capacitor.registerPlugin;
+  Plugins = Capacitor.Plugins;
+  CapacitorCookiesPluginWeb = class CapacitorCookiesPluginWeb extends WebPlugin {
+    async getCookies() {
+      const cookies = document.cookie;
+      const cookieMap = {};
+      cookies.split(";").forEach((cookie) => {
+        if (cookie.length <= 0)
+          return;
+        let [key, value] = cookie.replace(/=/, "CAP_COOKIE").split("CAP_COOKIE");
+        key = decode(key).trim();
+        value = decode(value).trim();
+        cookieMap[key] = value;
+      });
+      return cookieMap;
+    }
+    async setCookie(options) {
+      try {
+        const encodedKey = encode(options.key);
+        const encodedValue = encode(options.value);
+        const expires = `; expires=${(options.expires || "").replace("expires=", "")}`;
+        const path = (options.path || "/").replace("path=", "");
+        const domain = options.url != null && options.url.length > 0 ? `domain=${options.url}` : "";
+        document.cookie = `${encodedKey}=${encodedValue || ""}${expires}; path=${path}; ${domain};`;
+      } catch (error) {
+        return Promise.reject(error);
+      }
+    }
+    async deleteCookie(options) {
+      try {
+        document.cookie = `${options.key}=; Max-Age=0`;
+      } catch (error) {
+        return Promise.reject(error);
+      }
+    }
+    async clearCookies() {
+      try {
+        const cookies = document.cookie.split(";") || [];
+        for (const cookie of cookies) {
+          document.cookie = cookie.replace(/^ +/, "").replace(/=.*/, `=;expires=${new Date().toUTCString()};path=/`);
+        }
+      } catch (error) {
+        return Promise.reject(error);
+      }
+    }
+    async clearAllCookies() {
+      try {
+        await this.clearCookies();
+      } catch (error) {
+        return Promise.reject(error);
+      }
+    }
+  };
+  CapacitorCookies = registerPlugin("CapacitorCookies", {
+    web: () => new CapacitorCookiesPluginWeb
+  });
+  CapacitorHttpPluginWeb = class CapacitorHttpPluginWeb extends WebPlugin {
+    async request(options) {
+      const requestInit = buildRequestInit(options, options.webFetchExtra);
+      const urlParams = buildUrlParams(options.params, options.shouldEncodeUrlParams);
+      const url = urlParams ? `${options.url}?${urlParams}` : options.url;
+      const response = await fetch(url, requestInit);
+      const contentType = response.headers.get("content-type") || "";
+      let { responseType = "text" } = response.ok ? options : {};
+      if (contentType.includes("application/json")) {
+        responseType = "json";
+      }
+      let data;
+      let blob;
+      switch (responseType) {
+        case "arraybuffer":
+        case "blob":
+          blob = await response.blob();
+          data = await readBlobAsBase64(blob);
+          break;
+        case "json":
+          data = await response.json();
+          break;
+        case "document":
+        case "text":
+        default:
+          data = await response.text();
+      }
+      const headers = {};
+      response.headers.forEach((value, key) => {
+        headers[key] = value;
+      });
+      return {
+        data,
+        headers,
+        status: response.status,
+        url: response.url
+      };
+    }
+    async get(options) {
+      return this.request(Object.assign(Object.assign({}, options), { method: "GET" }));
+    }
+    async post(options) {
+      return this.request(Object.assign(Object.assign({}, options), { method: "POST" }));
+    }
+    async put(options) {
+      return this.request(Object.assign(Object.assign({}, options), { method: "PUT" }));
+    }
+    async patch(options) {
+      return this.request(Object.assign(Object.assign({}, options), { method: "PATCH" }));
+    }
+    async delete(options) {
+      return this.request(Object.assign(Object.assign({}, options), { method: "DELETE" }));
+    }
+  };
+  CapacitorHttp = registerPlugin("CapacitorHttp", {
+    web: () => new CapacitorHttpPluginWeb
+  });
+});
+
+// node_modules/@capacitor-community/text-to-speech/dist/esm/web.js
+var exports_web = {};
+__export(exports_web, {
+  TextToSpeechWeb: () => TextToSpeechWeb
+});
+var TextToSpeechWeb;
+var init_web = __esm(() => {
+  init_dist();
+  TextToSpeechWeb = class TextToSpeechWeb extends WebPlugin {
+    constructor() {
+      super();
+      this.speechSynthesis = null;
+      if ("speechSynthesis" in window) {
+        this.speechSynthesis = window.speechSynthesis;
+        window.addEventListener("beforeunload", () => {
+          this.stop();
+        });
+      }
+    }
+    async speak(options) {
+      if (!this.speechSynthesis) {
+        this.throwUnsupportedError();
+      }
+      await this.stop();
+      const speechSynthesis = this.speechSynthesis;
+      const utterance = this.createSpeechSynthesisUtterance(options);
+      return new Promise((resolve, reject) => {
+        utterance.onend = () => {
+          resolve();
+        };
+        utterance.onerror = (event) => {
+          reject(event);
+        };
+        speechSynthesis.speak(utterance);
+      });
+    }
+    async stop() {
+      if (!this.speechSynthesis) {
+        this.throwUnsupportedError();
+      }
+      this.speechSynthesis.cancel();
+    }
+    async getSupportedLanguages() {
+      const voices = this.getSpeechSynthesisVoices();
+      const languages = voices.map((voice) => voice.lang);
+      const filteredLanguages = languages.filter((v, i, a) => a.indexOf(v) == i);
+      return { languages: filteredLanguages };
+    }
+    async getSupportedVoices() {
+      const voices = this.getSpeechSynthesisVoices();
+      return { voices };
+    }
+    async isLanguageSupported(options) {
+      const result = await this.getSupportedLanguages();
+      const isLanguageSupported = result.languages.includes(options.lang);
+      return { supported: isLanguageSupported };
+    }
+    async openInstall() {
+      this.throwUnimplementedError();
+    }
+    createSpeechSynthesisUtterance(options) {
+      const voices = this.getSpeechSynthesisVoices();
+      const utterance = new SpeechSynthesisUtterance;
+      const { text, lang, rate, pitch, volume, voice } = options;
+      if (voice) {
+        utterance.voice = voices[voice];
+      }
+      if (volume) {
+        utterance.volume = volume >= 0 && volume <= 1 ? volume : 1;
+      }
+      if (rate) {
+        utterance.rate = rate >= 0.1 && rate <= 10 ? rate : 1;
+      }
+      if (pitch) {
+        utterance.pitch = pitch >= 0 && pitch <= 2 ? pitch : 2;
+      }
+      if (lang) {
+        utterance.lang = lang;
+      }
+      utterance.text = text;
+      return utterance;
+    }
+    getSpeechSynthesisVoices() {
+      if (!this.speechSynthesis) {
+        this.throwUnsupportedError();
+      }
+      if (!this.supportedVoices || this.supportedVoices.length < 1) {
+        this.supportedVoices = this.speechSynthesis.getVoices();
+      }
+      return this.supportedVoices;
+    }
+    throwUnsupportedError() {
+      throw this.unavailable("SpeechSynthesis API not available in this browser.");
+    }
+    throwUnimplementedError() {
+      throw this.unimplemented("Not implemented on web.");
+    }
+  };
+});
+
+// src/fe/webapp.ts
+init_dist();
+
+// node_modules/@capacitor-community/text-to-speech/dist/esm/index.js
+init_dist();
+
+// node_modules/@capacitor-community/text-to-speech/dist/esm/definitions.js
+var QueueStrategy;
+(function(QueueStrategy2) {
+  QueueStrategy2[QueueStrategy2["Flush"] = 0] = "Flush";
+  QueueStrategy2[QueueStrategy2["Add"] = 1] = "Add";
+})(QueueStrategy || (QueueStrategy = {}));
+
+// node_modules/@capacitor-community/text-to-speech/dist/esm/index.js
+var TextToSpeech = registerPlugin("TextToSpeech", {
+  web: () => Promise.resolve().then(() => (init_web(), exports_web)).then((m) => new m.TextToSpeechWeb)
+});
+if ("speechSynthesis" in window) {
+  window.speechSynthesis;
+}
+
+// src/fe/webapp.ts
+var Voice = registerPlugin("Voice");
+
+class UltraBlablaVoiceApp {
+  isInConversation = false;
+  isListening = false;
+  isProcessing = false;
+  isSpeaking = false;
+  recordBtn;
+  messages;
+  status;
+  clearBtn;
+  voice;
+  conversationHistory = [];
+  constructor() {
+    this.voice = Voice;
+    document.addEventListener("DOMContentLoaded", () => {
+      this.initializeElements();
+      this.setupEventListeners();
+      this.setupVoiceCallbacks();
+      this.initializeChatBox();
+      this.initializeApp();
+    });
+  }
+  initializeElements() {
+    this.recordBtn = document.getElementById("recordBtn");
+    this.messages = document.getElementById("messages");
+    this.status = document.getElementById("status");
+    this.clearBtn = document.getElementById("clearBtn");
+  }
+  setupEventListeners() {
+    this.recordBtn?.addEventListener("click", () => this.toggleConversation());
+    this.clearBtn?.addEventListener("click", () => this.clearMessages());
+    document.getElementById("settingsBtn")?.addEventListener("click", () => {
+      this.showSettings();
+    });
+    document.addEventListener("touchstart", () => {
+      if (this.isSpeaking) {
+        if (Capacitor.isNativePlatform()) {
+          this.voice.pauseListening();
+        }
+      }
+    });
+  }
+  setupVoiceCallbacks() {
+    if (!Capacitor.isNativePlatform()) {
+      console.warn("Plugin Voice disponible uniquement en mode natif");
+      return;
+    }
+    this.voice.addListener("sttResult", (data) => {
+      if (data.type === "final") {
+        this.handleSpeechResult(data.text);
+      } else if (data.type === "partial") {
+        this.updateStatus(`\uD83C\uDFA7 ${data.text}`, "listening");
+      }
+    });
+    this.voice.addListener("aiResponse", (data) => {
+      this.handleAIResponse(data);
+    });
+    this.voice.addListener("llmProcessing", (data) => {
+      this.isProcessing = data.status === "processing";
+      if (data.status === "processing") {
+        this.updateStatus("\uD83E\uDDE0 IA réfléchit...", "processing");
+      } else if (data.status === "error") {
+        this.updateStatus("❌ Erreur LLM", "error");
+      }
+    });
+    this.voice.addListener("llmError", (data) => {
+      this.isProcessing = false;
+      this.addMessage(`❌ Erreur LLM: ${data.error}`, "system");
+      this.updateConversationStatus();
+    });
+    this.voice.addListener("listeningStarted", () => {
+      console.log("\uD83C\uDFA4 listeningStarted event - Ajout classe .recording");
+      this.isListening = true;
+      this.recordBtn.classList.add("recording");
+      this.updateConversationStatus();
+    });
+    this.voice.addListener("listeningStopped", () => {
+      console.log("\uD83D\uDED1 listeningStopped event - Retrait classe .recording");
+      this.isListening = false;
+      this.recordBtn.classList.remove("recording");
+      this.updateConversationStatus();
+    });
+    this.voice.addListener("conversationStarted", () => {
+      this.isInConversation = true;
+      this.updateConversationStatus();
+    });
+    this.voice.addListener("conversationStopped", () => {
+      this.isInConversation = false;
+      this.isListening = false;
+      this.isSpeaking = false;
+      this.updateConversationStatus();
+    });
+    this.voice.addListener("sttError", (data) => {
+      console.error("STT Error:", data.error);
+      this.addMessage("❌ Erreur de reconnaissance vocale", "system");
+      this.updateStatus("Prêt • 100% Offline", "online");
+      this.isInConversation = false;
+      this.recordBtn.classList.remove("conversation");
+      this.recordBtn.querySelector(".btn-text").textContent = "Parler";
+    });
+    this.voice.addListener("voiceError", (data) => {
+      this.addMessage(`❌ Erreur native: ${data.error}`, "system");
+      this.isProcessing = false;
+      this.updateConversationStatus();
+    });
+    this.voice.addListener("sttResult", (data) => {
+      if (data.type === "final") {
+        this.handleSpeechResult(data.text);
+      } else if (data.type === "partial") {
+        this.updateStatus(`\uD83C\uDFA7 ${data.text}`, "listening");
+      }
+    });
+    this.voice.addListener("aiResponse", (data) => {
+      this.handleAIResponse(data);
+    });
+    this.voice.addListener("voiceActivity", (data) => {
+      this.updateVoiceIndicator(data.active, data.level);
+    });
+  }
+  handleSpeechResult(text) {
+    if (text.trim()) {
+      this.addMessage(text, "user");
+      this.conversationHistory.push({
+        user: text,
+        ai: "",
+        timestamp: Date.now()
+      });
+    }
+  }
+  async handleAIResponse(data) {
+    const userText = data.userText?.trim() ?? "";
+    const aiResponse = data.aiResponse?.trim() ?? "";
+    if (userText) {
+      const lastEntry = this.conversationHistory[this.conversationHistory.length - 1];
+      if (!lastEntry || lastEntry.user !== userText) {
+        this.addMessage(userText, "user");
+        this.conversationHistory.push({
+          user: userText,
+          ai: "",
+          timestamp: data.timestamp || Date.now()
+        });
+      }
+    }
+    if (aiResponse) {
+      this.addMessage(aiResponse, "ai");
+      if (this.conversationHistory.length > 0) {
+        this.conversationHistory[this.conversationHistory.length - 1].ai = aiResponse;
+      }
+      this.isSpeaking = true;
+      this.updateConversationStatus();
+      try {
+        await this.speakResponse(aiResponse);
+      } finally {
+        this.isSpeaking = false;
+        this.updateConversationStatus();
+      }
+    }
+  }
+  updateConversationStatus() {
+    let statusText = "";
+    let statusClass;
+    if (this.isInConversation) {
+      if (this.isSpeaking) {
+        statusText = "\uD83C\uDF99️ IA parle... (touchez pour interrompre)";
+        statusClass = "speaking";
+      } else if (this.isListening) {
+        statusText = "\uD83D\uDC42 À l'écoute... (parlez naturellement)";
+        statusClass = "listening";
+      } else if (this.isProcessing) {
+        statusText = "\uD83E\uDDE0 Traitement...";
+        statusClass = "processing";
+      } else {
+        statusText = "\uD83D\uDCAC Conversation active";
+        statusClass = "active";
+      }
+    } else {
+      statusText = "⏸️ Conversation en pause";
+      statusClass = "paused";
+    }
+    this.updateStatus(statusText, statusClass);
+  }
+  async initializeApp() {
+    this.updateStatus("Initialisation...", "loading");
+    if (Capacitor.isNativePlatform()) {
+      await this.initializeNativePlugins();
+    } else {
+      this.updateStatus("Mode Web - Fonctionnalités limitées", "warning");
+      this.addMessage("⚠️ Pour toutes les fonctionnalités, utilisez l'application Android", "system");
+    }
+  }
+  async initializeNativePlugins() {
+    try {
+      const permissionCheck = await this.voice.checkPermissions();
+      this.addMessage("\uD83C\uDF99️ Vérification permissions microphone...", "system");
+      const voiceStatus = await this.voice.init();
+      if (!voiceStatus.ok) {
+        if (voiceStatus.permissionDenied) {
+          this.updateStatus("Permission microphone refusée", "error");
+          this.addMessage("❌ Permission microphone refusée - Autorisez le microphone dans les paramètres Android", "system");
+        } else {
+          this.updateStatus("Erreur initialisation audio", "error");
+          this.addMessage("❌ Impossible d'initialiser le moteur vocal natif", "system");
+        }
+        return;
+      }
+      this.addMessage("✅ Moteur vocal initialisé (Vosk STT + Qwen3 LLM)", "system");
+      await this.initializeTTS();
+      this.updateStatus("Prêt • 100% Offline", "online");
+    } catch (error) {
+      console.error("Error initializing native plugins:", error);
+      this.updateStatus("Erreur d'initialisation", "error");
+      this.addMessage("❌ Erreur lors de l'initialisation des plugins natifs", "system");
+    }
+  }
+  async initializeTTS() {
+    try {
+      const voices = await TextToSpeech.getSupportedVoices();
+      const frenchVoices = voices.voices.filter((v) => v.lang?.startsWith("fr"));
+      if (frenchVoices.length === 0) {
+        await TextToSpeech.openInstall();
+        this.addMessage("\uD83D\uDCE5 Installez les voix françaises pour le TTS", "system");
+      }
+    } catch (error) {
+      console.warn("TTS initialization warning:", error);
+    }
+  }
+  async toggleConversation() {
+    if (this.isProcessing) {
+      console.warn("⏳ toggleConversation ignoré - Traitement en cours");
+      return;
+    }
+    console.log(`\uD83D\uDD04 toggleConversation - État actuel: ${this.isInConversation ? "EN CONVERSATION" : "ARRÊTÉ"}`);
+    this.recordBtn.style.transform = "scale(0.90)";
+    setTimeout(() => {
+      this.recordBtn.style.transform = "";
+    }, 150);
+    if (this.isInConversation) {
+      await this.stopConversation();
+    } else {
+      await this.startConversation();
+    }
+  }
+  async startConversation() {
+    if (!Capacitor.isNativePlatform() || !this.voice) {
+      this.addMessage("❌ Conversation native disponible uniquement sur Android", "system");
+      return;
+    }
+    try {
+      const result = await this.voice.startConversation();
+      if (result.permissionDenied) {
+        this.addMessage("❌ Permission microphone refusée - Activez-la dans les paramètres Android", "system");
+        return;
+      }
+      if (!result.started) {
+        this.addMessage("❌ Impossible de démarrer la conversation - " + (result.error || "Erreur inconnue"), "system");
+        return;
+      }
+      this.isInConversation = true;
+      this.recordBtn.classList.add("conversation");
+      this.recordBtn.querySelector(".btn-text").textContent = "Conversation Active";
+      this.addMessage("▶️ Conversation ultra dynamique démarrée ! Parlez naturellement...", "system");
+      this.updateConversationStatus();
+    } catch (error) {
+      console.error("Erreur démarrage conversation:", error);
+      this.addMessage("❌ Erreur lors du démarrage de la conversation", "system");
+    }
+  }
+  async stopConversation() {
+    if (!this.isInConversation || !this.voice)
+      return;
+    try {
+      await this.voice.stopConversation();
+      this.isInConversation = false;
+      this.recordBtn.classList.remove("conversation");
+      this.recordBtn.classList.remove("recording");
+      this.recordBtn.querySelector(".btn-text").textContent = "Parler";
+      this.updateStatus("⏳ Traitement...", "processing");
+    } catch (error) {
+      console.error("Error stopping recording:", error);
+      this.addMessage("❌ Erreur lors de l'arrêt de l'enregistrement", "system");
+    }
+  }
+  async speakResponse(text) {
+    try {
+      await TextToSpeech.speak({
+        text,
+        lang: "fr-FR",
+        rate: 1,
+        pitch: 1,
+        volume: 1,
+        category: "ambient"
+      });
+    } catch (error) {
+      console.warn("TTS Error:", error);
+      this.addMessage("⚠️ TTS non disponible - installez les voix françaises", "system");
+    }
+  }
+  addMessage(text, type) {
+    const welcome = this.messages.querySelector(".welcome");
+    if (welcome) {
+      welcome.remove();
+    }
+    const messageEl = document.createElement("div");
+    messageEl.className = `message ${type}-message`;
+    messageEl.textContent = text;
+    this.messages.appendChild(messageEl);
+    this.messages.scrollTop = this.messages.scrollHeight;
+    if (type !== "system") {
+      this.saveToHistory(text, type);
+    }
+  }
+  clearMessages() {
+    this.messages.innerHTML = `
             <div class="welcome">
                 <h2>Conversation effacée</h2>
                 <p>Appuyez sur le micro pour recommencer</p>
@@ -17,7 +953,115 @@ var Zh=Object.defineProperty;var $h=(h,S)=>{for(var O in S)Zh(h,O,{get:S[O],enum
                     </div>
                 </div>
             </div>
-        `}updateStatus(h,S){this.status.textContent=h,this.status.className=`status ${S}`}saveToHistory(h,S){let O=JSON.parse(localStorage.getItem("ultrablabla-history")||"[]");if(O.push({text:h,type:S,timestamp:Date.now()}),O.length>100)O.shift();localStorage.setItem("ultrablabla-history",JSON.stringify(O))}updateVoiceIndicator(h,S){if(h&&S>0.1)this.recordBtn?.classList.add("voice-active");else this.recordBtn?.classList.remove("voice-active")}showSettings(){this.addMessage("⚙️ Paramètres - À implémenter","system")}initializeChatBox(){console.log("Initialisation du ChatBox Neural");let h=document.getElementById("chatToggleBtn"),S=document.getElementById("chatboxContent"),O=document.getElementById("neuralSendBtn"),V=document.getElementById("neuralInput"),U=document.getElementById("neuralMessages"),X=document.getElementById("inputStatusText"),Y=document.getElementById("statusIndicator");if(h&&S)h.addEventListener("click",()=>{let J=S.style.display!=="none";S.style.display=J?"none":"flex",h.querySelector(".toggle-text").textContent=J?"EXPAND":"COLLAPSE"});if(O&&V&&U){let J=async()=>{let $=V.value.trim();if(!$)return;if(this.addChatMessage(U,"user","\uD83E\uDDE0",$),V.value="",Y&&X)this.updateChatStatus(Y,X,"processing","PROCESSING...");let Z=this.addTypingIndicator(U);try{let L=await this.getAIResponse($);if(Z)U.removeChild(Z);if(this.addChatMessage(U,"ai","\uD83E\uDD16",L),Y&&X)this.updateChatStatus(Y,X,"ready","READY")}catch(L){if(console.error("Erreur ChatBox:",L),Z)U.removeChild(Z);if(this.addChatMessage(U,"ai","⚠️","Erreur de connexion avec le modèle neural. Vérifiez les logs."),Y&&X)this.updateChatStatus(Y,X,"error","ERROR")}};O.addEventListener("click",J),V.addEventListener("keypress",($)=>{if($.key==="Enter"&&!$.shiftKey)$.preventDefault(),J()}),setTimeout(async()=>{this.addChatMessage(U,"system","⚡","Neural ChatBox activé. Test des permissions...");try{let $=await this.voice.requestMicrophonePermission();if($.granted)this.addChatMessage(U,"system","✅","Permissions microphone accordées ! Modèle Qwen3-0.6B prêt.");else{this.addChatMessage(U,"system","❌",`Permission microphone requise. État: ${$.state}`);let Z=document.createElement("div");Z.innerHTML=`
+        `;
+  }
+  updateStatus(text, type) {
+    this.status.textContent = text;
+    this.status.className = `status ${type}`;
+  }
+  saveToHistory(text, type) {
+    const history = JSON.parse(localStorage.getItem("ultrablabla-history") || "[]");
+    history.push({
+      text,
+      type,
+      timestamp: Date.now()
+    });
+    if (history.length > 100) {
+      history.shift();
+    }
+    localStorage.setItem("ultrablabla-history", JSON.stringify(history));
+  }
+  updateVoiceIndicator(active, level) {
+    if (active && level > 0.1) {
+      this.recordBtn?.classList.add("voice-active");
+    } else {
+      this.recordBtn?.classList.remove("voice-active");
+    }
+  }
+  showSettings() {
+    this.addMessage("⚙️ Paramètres - À implémenter", "system");
+  }
+  initializeChatBox() {
+    console.log("Initialisation du ChatBox Neural");
+    const chatToggle = document.getElementById("chatToggleBtn");
+    const chatContent = document.getElementById("chatboxContent");
+    const sendBtn = document.getElementById("neuralSendBtn");
+    const textarea = document.getElementById("neuralInput");
+    const messagesContainer = document.getElementById("neuralMessages");
+    const statusText = document.getElementById("inputStatusText");
+    const statusIndicator = document.getElementById("statusIndicator");
+    if (chatToggle && chatContent) {
+      chatToggle.addEventListener("click", () => {
+        const isExpanded = chatContent.style.display !== "none";
+        chatContent.style.display = isExpanded ? "none" : "flex";
+        chatToggle.querySelector(".toggle-text").textContent = isExpanded ? "EXPAND" : "COLLAPSE";
+      });
+    }
+    if (sendBtn && textarea && messagesContainer) {
+      textarea.addEventListener("input", () => {
+        const hasText = textarea.value.trim().length > 0;
+        sendBtn.disabled = !hasText;
+        console.log(`\uD83D\uDCAC Textarea input: "${textarea.value}" - Bouton ${hasText ? "ACTIVÉ" : "DÉSACTIVÉ"}`);
+      });
+      const sendMessage = async () => {
+        const message = textarea.value.trim();
+        if (!message) {
+          console.warn("❌ Message vide, envoi annulé");
+          return;
+        }
+        console.log("\uD83D\uDCE4 Envoi du message:", message);
+        sendBtn.disabled = true;
+        this.addChatMessage(messagesContainer, "user", "\uD83E\uDDE0", message);
+        textarea.value = "";
+        if (statusIndicator && statusText) {
+          this.updateChatStatus(statusIndicator, statusText, "processing", "PROCESSING...");
+        }
+        const typingElement = this.addTypingIndicator(messagesContainer);
+        try {
+          console.log("\uD83E\uDD16 Appel VoicePlugin.processText...");
+          const response = await this.getAIResponse(message);
+          console.log("✅ Réponse reçue:", response);
+          if (typingElement) {
+            messagesContainer.removeChild(typingElement);
+          }
+          this.addChatMessage(messagesContainer, "ai", "\uD83E\uDD16", response);
+          if (statusIndicator && statusText) {
+            this.updateChatStatus(statusIndicator, statusText, "ready", "READY");
+          }
+        } catch (error) {
+          console.error("❌ Erreur ChatBox:", error);
+          if (typingElement) {
+            messagesContainer.removeChild(typingElement);
+          }
+          this.addChatMessage(messagesContainer, "ai", "⚠️", `Erreur de connexion avec le modèle neural: ${error}`);
+          if (statusIndicator && statusText) {
+            this.updateChatStatus(statusIndicator, statusText, "error", "ERROR");
+          }
+        }
+      };
+      sendBtn.addEventListener("click", (e) => {
+        console.log("\uD83D\uDDB1️ Clic sur bouton SEND détecté !");
+        e.preventDefault();
+        e.stopPropagation();
+        sendMessage();
+      });
+      textarea.addEventListener("keypress", (e) => {
+        if (e.key === "Enter" && !e.shiftKey) {
+          e.preventDefault();
+          console.log("⌨️ Touche ENTER détectée !");
+          sendMessage();
+        }
+      });
+      setTimeout(async () => {
+        this.addChatMessage(messagesContainer, "system", "⚡", "Neural ChatBox activé. Test des permissions...");
+        try {
+          const permResult = await this.voice.requestMicrophonePermission();
+          if (permResult.granted) {
+            this.addChatMessage(messagesContainer, "system", "✅", "Permissions microphone accordées ! Modèle Qwen3-0.6B prêt.");
+          } else {
+            this.addChatMessage(messagesContainer, "system", "❌", `Permission microphone requise. État: ${permResult.state}`);
+            const buttonDiv = document.createElement("div");
+            buttonDiv.innerHTML = `
                             <button id="requestPermBtn" style="
                                 background: linear-gradient(135deg, var(--holo-primary), var(--energy-blue));
                                 border: none;
@@ -27,14 +1071,40 @@ var Zh=Object.defineProperty;var $h=(h,S)=>{for(var O in S)Zh(h,O,{get:S[O],enum
                                 cursor: pointer;
                                 margin-top: 10px;
                             ">\uD83C\uDFA4 Demander les permissions</button>
-                        `,U.appendChild(Z),Z.querySelector("#requestPermBtn")?.addEventListener("click",async()=>{let L=await this.voice.requestMicrophonePermission();this.addChatMessage(U,"system",L.granted?"✅":"❌",L.granted?"Permissions accordées !":"Permissions refusées")})}}catch($){this.addChatMessage(U,"system","⚠️","Erreur test permissions: "+$)}if(Y&&X)this.updateChatStatus(Y,X,"ready","READY")},1000)}}addChatMessage(h,S,O,V){let U=document.createElement("div");U.className=`${S}-message`,U.innerHTML=`
-            <div class="message-avatar ${S}">
-                ${O}
+                        `;
+            messagesContainer.appendChild(buttonDiv);
+            buttonDiv.querySelector("#requestPermBtn")?.addEventListener("click", async () => {
+              const result = await this.voice.requestMicrophonePermission();
+              this.addChatMessage(messagesContainer, "system", result.granted ? "✅" : "❌", result.granted ? "Permissions accordées !" : "Permissions refusées");
+            });
+          }
+        } catch (error) {
+          this.addChatMessage(messagesContainer, "system", "⚠️", "Erreur test permissions: " + error);
+        }
+        if (statusIndicator && statusText) {
+          this.updateChatStatus(statusIndicator, statusText, "ready", "READY");
+        }
+      }, 1000);
+    }
+  }
+  addChatMessage(container, type, avatar, text) {
+    const messageDiv = document.createElement("div");
+    messageDiv.className = `${type}-message`;
+    messageDiv.innerHTML = `
+            <div class="message-avatar ${type}">
+                ${avatar}
             </div>
             <div class="message-bubble">
-                <div class="message-text">${V}</div>
+                <div class="message-text">${text}</div>
             </div>
-        `,h.appendChild(U),h.scrollTop=h.scrollHeight}addTypingIndicator(h){let S=document.createElement("div");return S.className="ai-message typing-message",S.innerHTML=`
+        `;
+    container.appendChild(messageDiv);
+    container.scrollTop = container.scrollHeight;
+  }
+  addTypingIndicator(container) {
+    const typingDiv = document.createElement("div");
+    typingDiv.className = "ai-message typing-message";
+    typingDiv.innerHTML = `
             <div class="message-avatar ai">\uD83E\uDD16</div>
             <div class="message-bubble">
                 <div class="message-text">
@@ -45,4 +1115,66 @@ var Zh=Object.defineProperty;var $h=(h,S)=>{for(var O in S)Zh(h,O,{get:S[O],enum
                     </div>
                 </div>
             </div>
-        `,h.appendChild(S),h.scrollTop=h.scrollHeight,S}updateChatStatus(h,S,O,V){h.className=`status-indicator ${O}`,S.textContent=V}async getAIResponse(h){try{if(console.log("Envoi du message à l'IA:",h),h.toLowerCase().includes("permission")||h.toLowerCase().includes("micro")){let O=await this.voice.checkPermissions();return`Système de permissions: ${O.granted?"✅ ACTIF":"❌ INACTIF"} (État: ${O.microphone})`}if(h.toLowerCase().includes("test")||h.toLowerCase().includes("modèle"))try{let O=await this.voice.init();return`État du modèle LLM: ${O.llm?"✅ Chargé":"❌ Erreur"} | Vosk: ${O.vosk?"✅ OK":"❌ KO"}`}catch(O){return`Erreur initialisation: ${O}`}let S=await this.voice.processText({text:h,action:"chat"});if(S&&S.response)return S.response;else return this.getFallbackResponse(h)}catch(S){return console.error("Erreur lors de l'appel à l'IA:",S),`❌ Erreur: ${S}. Fallback: ${this.getFallbackResponse(h)}`}}getFallbackResponse(h){if(h.toLowerCase().includes("bonjour")||h.toLowerCase().includes("salut"))return"Bonjour ! Je suis UltraBlabla AI. Système neural en ligne. Comment puis-je vous aider ?";if(h.toLowerCase().includes("comment")&&h.toLowerCase().includes("vas"))return"Système neural fonctionnel à 100%. Toutes mes fonctions cognitives sont opérationnelles.";if(h.toLowerCase().includes("quoi")||h.toLowerCase().includes("que"))return"Je suis une IA vocale intégrée avec Vosk STT et Qwen3-0.6B LLM. Je peux répondre à vos questions.";let S=[`Message reçu et traité par UltraBlabla AI. Analyse: "${h.substring(0,50)}${h.length>50?"...":""}"`,"Système neural actif. Votre requête a été intégrée dans ma base de connaissances.","IA conversationnelle prête. Modèle Qwen3 en mode test avec votre message.","Interface cognitive opérationnelle. Processing terminé avec succès.","Réponse générée par le noyau neural UltraBlabla. Status: ONLINE"],O=Math.floor(Math.random()*S.length);return S[O]}}document.addEventListener("DOMContentLoaded",()=>{new o,console.log("\uD83D\uDE80 UltraBlabla initialized - Native Android Voice AI")});
+        `;
+    container.appendChild(typingDiv);
+    container.scrollTop = container.scrollHeight;
+    return typingDiv;
+  }
+  updateChatStatus(indicator, text, status, message) {
+    indicator.className = `status-indicator ${status}`;
+    text.textContent = message;
+  }
+  async getAIResponse(message) {
+    try {
+      console.log("Envoi du message à l'IA:", message);
+      if (message.toLowerCase().includes("permission") || message.toLowerCase().includes("micro")) {
+        const permCheck = await this.voice.checkPermissions();
+        return `Système de permissions: ${permCheck.granted ? "✅ ACTIF" : "❌ INACTIF"} (État: ${permCheck.microphone})`;
+      }
+      if (message.toLowerCase().includes("test") || message.toLowerCase().includes("modèle")) {
+        try {
+          const initResult = await this.voice.init();
+          return `État du modèle LLM: ${initResult.llm ? "✅ Chargé" : "❌ Erreur"} | Vosk: ${initResult.vosk ? "✅ OK" : "❌ KO"}`;
+        } catch (error) {
+          return `Erreur initialisation: ${error}`;
+        }
+      }
+      const result = await this.voice.processText({
+        text: message,
+        action: "chat"
+      });
+      if (result && result.response) {
+        return result.response;
+      } else {
+        return this.getFallbackResponse(message);
+      }
+    } catch (error) {
+      console.error("Erreur lors de l'appel à l'IA:", error);
+      return `❌ Erreur: ${error}. Fallback: ${this.getFallbackResponse(message)}`;
+    }
+  }
+  getFallbackResponse(message) {
+    if (message.toLowerCase().includes("bonjour") || message.toLowerCase().includes("salut")) {
+      return `Bonjour ! Je suis UltraBlabla AI. Système neural en ligne. Comment puis-je vous aider ?`;
+    }
+    if (message.toLowerCase().includes("comment") && message.toLowerCase().includes("vas")) {
+      return `Système neural fonctionnel à 100%. Toutes mes fonctions cognitives sont opérationnelles.`;
+    }
+    if (message.toLowerCase().includes("quoi") || message.toLowerCase().includes("que")) {
+      return `Je suis une IA vocale intégrée avec Vosk STT et Qwen3-0.6B LLM. Je peux répondre à vos questions.`;
+    }
+    const responses = [
+      `Message reçu et traité par UltraBlabla AI. Analyse: "${message.substring(0, 50)}${message.length > 50 ? "..." : ""}"`,
+      `Système neural actif. Votre requête a été intégrée dans ma base de connaissances.`,
+      `IA conversationnelle prête. Modèle Qwen3 en mode test avec votre message.`,
+      `Interface cognitive opérationnelle. Processing terminé avec succès.`,
+      `Réponse générée par le noyau neural UltraBlabla. Status: ONLINE`
+    ];
+    const randomIndex = Math.floor(Math.random() * responses.length);
+    return responses[randomIndex];
+  }
+}
+document.addEventListener("DOMContentLoaded", () => {
+  new UltraBlablaVoiceApp;
+  console.log("\uD83D\uDE80 UltraBlabla initialized - Native Android Voice AI");
+});

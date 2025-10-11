@@ -138,12 +138,16 @@ class UltraBlablaVoiceApp {
         });
         
         this.voice.addListener('listeningStarted', () => {
+            console.log('🎤 listeningStarted event - Ajout classe .recording');
             this.isListening = true;
+            this.recordBtn.classList.add('recording');
             this.updateConversationStatus();
         });
         
         this.voice.addListener('listeningStopped', () => {
+            console.log('🛑 listeningStopped event - Retrait classe .recording');
             this.isListening = false;
+            this.recordBtn.classList.remove('recording');
             this.updateConversationStatus();
         });
         
@@ -328,8 +332,17 @@ class UltraBlablaVoiceApp {
 
     private async toggleConversation() {
         if (this.isProcessing) {
+            console.warn('⏳ toggleConversation ignoré - Traitement en cours');
             return;
         }
+
+        console.log(`🔄 toggleConversation - État actuel: ${this.isInConversation ? 'EN CONVERSATION' : 'ARRÊTÉ'}`);
+        
+        // Effet visuel immédiat
+        this.recordBtn.style.transform = 'scale(0.90)';
+        setTimeout(() => {
+            this.recordBtn.style.transform = '';
+        }, 150);
 
         if (this.isInConversation) {
             await this.stopConversation();
@@ -504,10 +517,25 @@ class UltraBlablaVoiceApp {
         }
 
         if (sendBtn && textarea && messagesContainer) {
+            // ✅ ACTIVER le bouton quand l'utilisateur tape
+            textarea.addEventListener('input', () => {
+                const hasText = textarea.value.trim().length > 0;
+                sendBtn.disabled = !hasText;
+                console.log(`💬 Textarea input: "${textarea.value}" - Bouton ${hasText ? 'ACTIVÉ' : 'DÉSACTIVÉ'}`);
+            });
+            
             const sendMessage = async () => {
                 const message = textarea.value.trim();
-                if (!message) return;
+                if (!message) {
+                    console.warn('❌ Message vide, envoi annulé');
+                    return;
+                }
 
+                console.log('📤 Envoi du message:', message);
+                
+                // Désactiver le bouton pendant l'envoi
+                sendBtn.disabled = true;
+                
                 // Ajouter message utilisateur
                 this.addChatMessage(messagesContainer, 'user', '🧠', message);
                 textarea.value = '';
@@ -522,7 +550,9 @@ class UltraBlablaVoiceApp {
                 
                 try {
                     // Appeler l'IA via VoicePlugin
+                    console.log('🤖 Appel VoicePlugin.processText...');
                     const response = await this.getAIResponse(message);
+                    console.log('✅ Réponse reçue:', response);
                     
                     // Supprimer indicateur de typing
                     if (typingElement) {
@@ -536,14 +566,14 @@ class UltraBlablaVoiceApp {
                     }
                     
                 } catch (error) {
-                    console.error('Erreur ChatBox:', error);
+                    console.error('❌ Erreur ChatBox:', error);
                     
                     if (typingElement) {
                         messagesContainer.removeChild(typingElement);
                     }
                     
                     this.addChatMessage(messagesContainer, 'ai', '⚠️', 
-                        'Erreur de connexion avec le modèle neural. Vérifiez les logs.');
+                        `Erreur de connexion avec le modèle neural: ${error}`);
                     if (statusIndicator && statusText) {
                         this.updateChatStatus(statusIndicator, statusText, 'error', 'ERROR');
                     }
@@ -551,10 +581,17 @@ class UltraBlablaVoiceApp {
             };
 
             // Event listeners
-            sendBtn.addEventListener('click', sendMessage);
+            sendBtn.addEventListener('click', (e) => {
+                console.log('🖱️ Clic sur bouton SEND détecté !');
+                e.preventDefault();
+                e.stopPropagation();
+                sendMessage();
+            });
+            
             textarea.addEventListener('keypress', (e) => {
                 if (e.key === 'Enter' && !e.shiftKey) {
                     e.preventDefault();
+                    console.log('⌨️ Touche ENTER détectée !');
                     sendMessage();
                 }
             });

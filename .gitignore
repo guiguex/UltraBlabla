@@ -8,6 +8,7 @@ capacitor.config.ts
 *.lock
 android/app/src/main/assets/llm/qwen3-0.6b-instruct.Q4_K_M.gguf
 android/app/src/main/assets/vosk-model-small-fr-0.22.zip
+android/app/src/main/cpp/llama.cpp/
 **/*webapp-new*
 **/*webapp-android*
 

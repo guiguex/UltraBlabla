@@ -1,3 +1,5 @@
+export {};
+
 const API_BASE = 'https://api.guig.dev/v1';
 const HEADERS = {
   'Origin': 'https://guig.dev',

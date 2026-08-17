@@ -1,0 +1,38 @@
+# Google Cloud Build Pipeline - UltraBlabla Android & Web
+steps:
+  # 1. Build des assets Web avec Bun
+  - name: 'oven/bun:latest'
+    entrypoint: 'sh'
+    args:
+      - '-c'
+      - |
+        bun install
+        bun run build
+
+  # 2. Compilation Android APK via container Android SDK
+  - name: 'ghcr.io/cirruslabs/android-sdk:34'
+    entrypoint: 'sh'
+    args:
+      - '-c'
+      - |
+        npx cap sync android
+        cd android
+        chmod +x ./gradlew
+        ./gradlew assembleDebug --no-daemon
+
+  # 3. Déploiement automatique vers Firebase App Distribution (Optionnel)
+  # - name: 'gcr.io/$PROJECT_ID/firebase'
+  #   args: ['appdistribution:distribute', 'android/app/build/outputs/apk/debug/app-debug.apk', '--app', '$FIREBASE_APP_ID', '--groups', 'testers']
+
+# Sauvegarde de l'APK dans Google Cloud Storage
+artifacts:
+  objects:
+    location: 'gs://${_GCS_BUCKET_NAME}/builds/$BUILD_ID'
+    paths:
+      - 'android/app/build/outputs/apk/debug/app-debug.apk'
+
+substitutions:
+  _GCS_BUCKET_NAME: 'ultrablabla-builds'
+
+options:
+  machineType: 'E2_HIGHCPU_8'

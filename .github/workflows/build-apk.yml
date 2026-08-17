@@ -1,0 +1,64 @@
+name: Build & Release UltraBlabla Android APK
+
+on:
+  push:
+    branches: [ "master", "main" ]
+  workflow_dispatch:
+
+jobs:
+  build-apk:
+    name: Build Android APK (Cloud KISS)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 📥 Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: ⚡ Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: ☕ Setup Java JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: gradle
+
+      - name: 📦 Install Dependencies
+        run: bun install
+
+      - name: 🔨 Build Web Assets (Next-Gen Bundle)
+        run: bun run build
+
+      - name: 🔄 Sync Capacitor Android
+        run: bun x cap sync android
+
+      - name: 🔑 Make Gradlew Executable
+        run: chmod +x ./android/gradlew
+
+      - name: 🏗️ Build Debug APK
+        run: |
+          cd android
+          ./gradlew assembleDebug --no-daemon
+
+      - name: 📤 Upload Debug APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: UltraBlabla-Debug-APK
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 14
+
+      # Optionnel : Firebase App Distribution (si FIREBASE_APP_ID et FIREBASE_TOKEN sont définis dans Secrets)
+      - name: 🚀 Upload to Firebase App Distribution (Optional)
+        if: env.FIREBASE_APP_ID != '' && env.FIREBASE_TOKEN != ''
+        uses: wzieba/Firebase-Distribution-Github-Action@v1
+        with:
+          appId: ${{ secrets.FIREBASE_APP_ID }}
+          token: ${{ secrets.FIREBASE_TOKEN }}
+          groups: testers
+          file: android/app/build/outputs/apk/debug/app-debug.apk
+        env:
+          FIREBASE_APP_ID: ${{ secrets.FIREBASE_APP_ID }}
+          FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}

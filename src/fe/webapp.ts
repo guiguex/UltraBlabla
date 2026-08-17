@@ -1,764 +1,607 @@
-// UltraBlabla - Interface Vocale Dynamique Ultra Moderne 2030
-// Architecture: Vosk STT + Qwen3 LLM + Google TTS (100% offline)
+/**
+ * UltraBlabla Live Voice Engine (Gemini Live Style)
+ * 1-Click Zero Friction • Fluid Adaptive VAD • Dynamic 60 FPS Morphing Orb
+ */
 
-import { Capacitor, registerPlugin } from '@capacitor/core';
-import { TextToSpeech } from '@capacitor-community/text-to-speech';
+type LiveState = 'idle' | 'listening' | 'thinking' | 'speaking';
 
-// Interface pour le plugin Voice natif ultra dynamique
-interface VoicePlugin {
-    checkPermissions(): Promise<{ microphone: string; granted: boolean }>;
-    init(): Promise<{ ok: boolean; vosk: boolean; llm: boolean; permissions?: boolean; permissionDenied?: boolean }>;
-    startConversation(): Promise<{ started: boolean; permissionDenied?: boolean; error?: string }>;
-    stopConversation(): Promise<{ stopped: boolean }>;
-    pauseListening(): Promise<{ paused: boolean }>;
-    resumeListening(): Promise<{ resumed: boolean }>;
-    addListener(eventName: string, listenerFunc: (data: any) => void): void;
-    removeAllListeners(): void;
-    processText(options: { text: string; action: string }): Promise<{ response?: string }>;
-    requestMicrophonePermission(): Promise<{ granted: boolean; state: string }>;
-}
+class UltraBlablaLiveApp {
+    private state: LiveState = 'idle';
+    private audioCtx: AudioContext | null = null;
+    private micStream: MediaStream | null = null;
+    private analyser: AnalyserNode | null = null;
+    private mediaRecorder: MediaRecorder | null = null;
+    private recordedChunks: Blob[] = [];
+    private currentAudioSource: AudioBufferSourceNode | null = null;
+    private gainNode: GainNode | null = null;
 
-// UltraBlablaAI plugin removed - VoicePlugin handles everything now
+    // VAD & Turn-Taking
+    private isSpeakingVoice: boolean = false;
+    private silenceTimer: number | null = null;
+    private noiseFloor: number = 12;
+    private speechOnsetFrames: number = 0;
+    private speechStartTime: number = 0;
+    private isVADActive: boolean = false;
 
-// Events du plugin Voice
-interface STTResult {
-    type: 'partial' | 'intermediate' | 'final';
-    text: string;
-}
-
-interface AIResponse {
-    userText: string;
-    aiResponse: string;
-    timestamp: number;
-}
-
-interface ProcessingStatus {
-    status: 'processing' | 'completed' | 'error';
-    userText?: string;
-    error?: string;
-}
-
-// Register plugins - VoicePlugin handles everything (STT + LLM + Permissions)
-const Voice = registerPlugin<VoicePlugin>('Voice');
-
-class UltraBlablaVoiceApp {
-    // États conversationnels
-    private isInConversation = false;
-    private isListening = false;
-    private isProcessing = false;
-    private isSpeaking = false;
-    
-    // UI Elements
-    private recordBtn!: HTMLButtonElement;
-    private messages!: HTMLElement;
-    private status!: HTMLElement;
+    // DOM Elements
+    private ambientBg!: HTMLElement;
+    private statusDot!: HTMLElement;
+    private orbBtn!: HTMLElement;
+    private orbIcon!: HTMLElement;
+    private orbLabel!: HTMLElement;
+    private captionSpeaker!: HTMLElement;
+    private captionText!: HTMLElement;
+    private mainToggleBtn!: HTMLButtonElement;
+    private btnIcon!: HTMLElement;
+    private btnText!: HTMLElement;
     private clearBtn!: HTMLButtonElement;
-    
-    // Plugin natif
-    private voice: VoicePlugin;
-    
-    // Conversation
-    private conversationHistory: Array<{user: string, ai: string, timestamp: number}> = [];
+    private canvas!: HTMLCanvasElement;
+    private canvasCtx!: CanvasRenderingContext2D | null;
 
     constructor() {
-        // Initialisation du plugin natif
-        this.voice = Voice;
-        
-        // Attendre que le DOM soit prêt
-        document.addEventListener('DOMContentLoaded', () => {
-            this.initializeElements();
-            this.setupEventListeners();
-            this.setupVoiceCallbacks();
-            this.initializeChatBox();
-            this.initializeApp();
-        });
+        if (typeof window !== 'undefined') {
+            document.addEventListener('DOMContentLoaded', () => this.init());
+        }
     }
 
-    private initializeElements() {
-        this.recordBtn = document.getElementById('recordBtn') as HTMLButtonElement;
-        this.messages = document.getElementById('messages') as HTMLElement;
-        this.status = document.getElementById('status') as HTMLElement;
+    private init() {
+        this.bindElements();
+        this.setupListeners();
+        this.initOrbVisualizer();
+        this.updateUI('idle');
+    }
+
+    private bindElements() {
+        this.ambientBg = document.getElementById('ambientBg') as HTMLElement;
+        this.statusDot = document.getElementById('statusDot') as HTMLElement;
+        this.orbBtn = document.getElementById('orbBtn') as HTMLElement;
+        this.orbIcon = document.getElementById('orbIcon') as HTMLElement;
+        this.orbLabel = document.getElementById('orbLabel') as HTMLElement;
+        this.captionSpeaker = document.getElementById('captionSpeaker') as HTMLElement;
+        this.captionText = document.getElementById('captionText') as HTMLElement;
+        this.mainToggleBtn = document.getElementById('mainToggleBtn') as HTMLButtonElement;
+        this.btnIcon = document.getElementById('btnIcon') as HTMLElement;
+        this.btnText = document.getElementById('btnText') as HTMLElement;
         this.clearBtn = document.getElementById('clearBtn') as HTMLButtonElement;
+        this.canvas = document.getElementById('orb-canvas') as HTMLCanvasElement;
+        if (this.canvas) {
+            this.canvasCtx = this.canvas.getContext('2d');
+        }
     }
 
-    private setupEventListeners() {
-        // Bouton conversation dynamique
-        this.recordBtn?.addEventListener('click', () => this.toggleConversation());
-        
-        // Clear button
-        this.clearBtn?.addEventListener('click', () => this.clearMessages());
-        
-        // Settings button
-        document.getElementById('settingsBtn')?.addEventListener('click', () => {
-            this.showSettings();
+    private setupListeners() {
+        // Toggle on Orb or Main Button
+        this.orbBtn?.addEventListener('click', () => this.toggleLiveSession());
+        this.mainToggleBtn?.addEventListener('click', () => this.toggleLiveSession());
+
+        // Clear History
+        this.clearBtn?.addEventListener('click', () => {
+            this.stopSpeaking();
+            this.showCaption('SYSTEM', 'Historique nettoyé. Prêt à discuter.', true);
+            this.playChime(400, 0.08);
+            if (this.state !== 'idle') this.stopLiveSession();
         });
-        
-        // Interruption par toucher
-        document.addEventListener('touchstart', () => {
-            if (this.isSpeaking) {
-                if (Capacitor.isNativePlatform()) {
-                    this.voice.pauseListening();
-                }
+
+        // Space shortcut
+        document.addEventListener('keydown', (e) => {
+            if (e.code === 'Space' && (e.target === document.body || e.target === this.orbBtn || e.target === this.mainToggleBtn)) {
+                e.preventDefault();
+                this.toggleLiveSession();
             }
         });
     }
-    
-    private setupVoiceCallbacks() {
-        if (!Capacitor.isNativePlatform()) {
-            console.warn('Plugin Voice disponible uniquement en mode natif');
+
+    private async toggleLiveSession() {
+        if (this.state === 'speaking') {
+            // Barge-in instantané
+            this.stopSpeaking();
+            this.startListening();
             return;
         }
-        
-        // Configuration des événements Capacitor natifs (selon VoicePlugin.java)
-        this.voice.addListener('sttResult', (data: STTResult) => {
-            if (data.type === 'final') {
-                this.handleSpeechResult(data.text);
-            } else if (data.type === 'partial') {
-                this.updateStatus(`🎧 ${data.text}`, 'listening');
-            }
-        });
-        
-        this.voice.addListener('aiResponse', (data: AIResponse) => {
-            this.handleAIResponse(data);
-        });
-        
-        this.voice.addListener('llmProcessing', (data: ProcessingStatus) => {
-            this.isProcessing = data.status === 'processing';
-            if (data.status === 'processing') {
-                this.updateStatus('🧠 IA réfléchit...', 'processing');
-            } else if (data.status === 'error') {
-                this.updateStatus('❌ Erreur LLM', 'error');
-            }
-        });
-        
-        this.voice.addListener('llmError', (data: { error: string }) => {
-            this.isProcessing = false;
-            this.addMessage(`❌ Erreur LLM: ${data.error}`, 'system');
-            this.updateConversationStatus();
-        });
-        
-        this.voice.addListener('listeningStarted', () => {
-            console.log('🎤 listeningStarted event - Ajout classe .recording');
-            this.isListening = true;
-            this.recordBtn.classList.add('recording');
-            this.updateConversationStatus();
-        });
-        
-        this.voice.addListener('listeningStopped', () => {
-            console.log('🛑 listeningStopped event - Retrait classe .recording');
-            this.isListening = false;
-            this.recordBtn.classList.remove('recording');
-            this.updateConversationStatus();
-        });
-        
-        this.voice.addListener('conversationStarted', () => {
-            this.isInConversation = true;
-            this.updateConversationStatus();
-        });
-        
-        this.voice.addListener('conversationStopped', () => {
-            this.isInConversation = false;
-            this.isListening = false;
-            this.isSpeaking = false;
-            this.updateConversationStatus();
-        });
-        
-        this.voice.addListener('sttError', (data: { error: string }) => {
-            console.error('STT Error:', data.error);
-            this.addMessage('❌ Erreur de reconnaissance vocale', 'system');
-            this.updateStatus('Prêt • 100% Offline', 'online');
-            
-            this.isInConversation = false;
-            this.recordBtn.classList.remove('conversation');
-            this.recordBtn.querySelector('.btn-text')!.textContent = 'Parler';
-        });
-        
-        this.voice.addListener('voiceError', (data: { error: string }) => {
-            this.addMessage(`❌ Erreur native: ${data.error}`, 'system');
-            this.isProcessing = false;
-            this.updateConversationStatus();
-        });
-        
-        // Résultats STT depuis VoicePlugin
-        this.voice.addListener('sttResult', (data: STTResult) => {
-            if (data.type === 'final') {
-                this.handleSpeechResult(data.text);
-            } else if (data.type === 'partial') {
-                this.updateStatus(`🎧 ${data.text}`, 'listening');
-            }
-        });
-        
-        // Réponses IA depuis VoicePlugin
-        this.voice.addListener('aiResponse', (data: AIResponse) => {
-            this.handleAIResponse(data);
-        });
-        
-        // Indicateur vocal réactif
-        this.voice.addListener('voiceActivity', (data: { active: boolean; level: number }) => {
-            this.updateVoiceIndicator(data.active, data.level);
-        });
+
+        if (this.state === 'listening') {
+            this.stopLiveSession();
+            return;
+        }
+
+        if (this.state === 'thinking') {
+            return;
+        }
+
+        // Start Live Session
+        await this.startListening();
     }
-    
-    private handleSpeechResult(text: string) {
-        if (text.trim()) {
-            this.addMessage(text, 'user');
-            this.conversationHistory.push({
-                user: text,
-                ai: '',
-                timestamp: Date.now()
-            });
+
+    private async ensureAudioContext() {
+        if (!this.audioCtx) {
+            const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+            this.audioCtx = new AudioContextClass();
+            this.gainNode = this.audioCtx.createGain();
+            this.gainNode.connect(this.audioCtx.destination);
+        }
+        if (this.audioCtx.state === 'suspended') {
+            await this.audioCtx.resume();
         }
     }
-    
-    private async handleAIResponse(data: AIResponse) {
-        const userText = data.userText?.trim() ?? '';
-        const aiResponse = data.aiResponse?.trim() ?? '';
-        
-        if (userText) {
-            const lastEntry = this.conversationHistory[this.conversationHistory.length - 1];
-            if (!lastEntry || lastEntry.user !== userText) {
-                this.addMessage(userText, 'user');
-                this.conversationHistory.push({
-                    user: userText,
-                    ai: '',
-                    timestamp: data.timestamp || Date.now()
+
+    private async startListening() {
+        try {
+            await this.ensureAudioContext();
+            this.stopSpeaking();
+
+            if (!this.micStream) {
+                this.micStream = await navigator.mediaDevices.getUserMedia({
+                    audio: {
+                        echoCancellation: true,
+                        noiseSuppression: true,
+                        autoGainControl: true,
+                    }
                 });
             }
-        }
-        
-        if (aiResponse) {
-            this.addMessage(aiResponse, 'ai');
-            if (this.conversationHistory.length > 0) {
-                this.conversationHistory[this.conversationHistory.length - 1].ai = aiResponse;
+
+            if (!this.analyser && this.audioCtx && this.micStream) {
+                const source = this.audioCtx.createMediaStreamSource(this.micStream);
+                this.analyser = this.audioCtx.createAnalyser();
+                this.analyser.fftSize = 512;
+                this.analyser.smoothingTimeConstant = 0.3;
+                source.connect(this.analyser);
             }
-            
-            // Réponse vocale automatique pour conversation ultra-dynamique
-            this.isSpeaking = true;
-            this.updateConversationStatus();
-            try {
-                await this.speakResponse(aiResponse);
-            } finally {
-                this.isSpeaking = false;
-                this.updateConversationStatus();
-            }
+
+            this.recordedChunks = [];
+            const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+                ? 'audio/webm;codecs=opus'
+                : 'audio/webm';
+
+            this.mediaRecorder = new MediaRecorder(this.micStream, { mimeType });
+            this.mediaRecorder.ondataavailable = (e) => {
+                if (e.data && e.data.size > 0) this.recordedChunks.push(e.data);
+            };
+            this.mediaRecorder.onstop = () => this.processAudio();
+
+            this.mediaRecorder.start(100);
+            this.updateUI('listening');
+            this.playChime(880, 0.05);
+
+            this.isSpeakingVoice = false;
+            this.speechOnsetFrames = 0;
+            this.speechStartTime = 0;
+            this.startVAD();
+
+        } catch (err: any) {
+            console.error('Mic Error:', err);
+            this.updateUI('idle');
+            this.showCaption('SYSTEM', `Microphone inaccessible : ${err?.message || err}`, true);
         }
     }
-    
-    private updateConversationStatus() {
-        let statusText = '';
-        let statusClass: 'loading' | 'online' | 'error' | 'warning' | 'recording' | 'processing' | 'speaking' | 'listening' | 'active' | 'paused';
-        
-        if (this.isInConversation) {
-            if (this.isSpeaking) {
-                statusText = '🎙️ IA parle... (touchez pour interrompre)';
-                statusClass = 'speaking';
-            } else if (this.isListening) {
-                statusText = '👂 À l\'écoute... (parlez naturellement)';
-                statusClass = 'listening';
-            } else if (this.isProcessing) {
-                statusText = '🧠 Traitement...';
-                statusClass = 'processing';
+
+    private startVAD() {
+        if (this.isVADActive) return;
+        this.isVADActive = true;
+
+        const bufferLength = this.analyser?.frequencyBinCount || 256;
+        const dataArray = new Uint8Array(bufferLength);
+
+        const checkAudioFrame = () => {
+            if (!this.isVADActive || this.state !== 'listening' || !this.analyser) return;
+
+            this.analyser.getByteFrequencyData(dataArray);
+
+            // Énergie vocale humaine (300Hz - 3400Hz)
+            let voiceSum = 0;
+            const low = 3;
+            const high = Math.min(42, bufferLength);
+
+            for (let i = low; i < high; i++) {
+                voiceSum += dataArray[i];
+            }
+            const currentVoiceEnergy = voiceSum / (high - low);
+
+            if (!this.isSpeakingVoice) {
+                // Ajustement dynamique du bruit de fond
+                this.noiseFloor = (this.noiseFloor * 0.95) + (currentVoiceEnergy * 0.05);
+            }
+
+            const threshold = Math.max(14, this.noiseFloor * 1.5 + 8);
+            const hasVoice = currentVoiceEnergy > threshold;
+
+            if (hasVoice) {
+                this.speechOnsetFrames++;
+                if (this.speechOnsetFrames >= 3) {
+                    if (!this.isSpeakingVoice) {
+                        this.isSpeakingVoice = true;
+                        this.speechStartTime = Date.now();
+                        this.showCaption('VOUS', 'Écoute en cours...', false);
+                    }
+                    if (this.silenceTimer) {
+                        window.clearTimeout(this.silenceTimer);
+                        this.silenceTimer = null;
+                    }
+                }
             } else {
-                statusText = '💬 Conversation active';
-                statusClass = 'active';
-            }
-        } else {
-            statusText = '⏸️ Conversation en pause';
-            statusClass = 'paused';
-        }
-        
-        this.updateStatus(statusText, statusClass);
-    }
-
-    private async initializeApp() {
-        this.updateStatus('Initialisation...', 'loading');
-        
-        if (Capacitor.isNativePlatform()) {
-            await this.initializeNativePlugins();
-        } else {
-            this.updateStatus('Mode Web - Fonctionnalités limitées', 'warning');
-            this.addMessage('⚠️ Pour toutes les fonctionnalités, utilisez l\'application Android', 'system');
-        }
-    }
-
-    private async initializeNativePlugins() {
-        try {
-            // Vérifier et demander les permissions via VoicePlugin
-            const permissionCheck = await this.voice.checkPermissions();
-            this.addMessage('🎙️ Vérification permissions microphone...', 'system');
-            
-            // Initialiser VoicePlugin (avec demande automatique de permissions si nécessaire)
-            const voiceStatus = await this.voice.init();
-            if (!voiceStatus.ok) {
-                if (voiceStatus.permissionDenied) {
-                    this.updateStatus('Permission microphone refusée', 'error');
-                    this.addMessage('❌ Permission microphone refusée - Autorisez le microphone dans les paramètres Android', 'system');
-                } else {
-                    this.updateStatus('Erreur initialisation audio', 'error');
-                    this.addMessage('❌ Impossible d\'initialiser le moteur vocal natif', 'system');
+                this.speechOnsetFrames = Math.max(0, this.speechOnsetFrames - 1);
+                if (this.isSpeakingVoice) {
+                    const speechDuration = Date.now() - this.speechStartTime;
+                    if (speechDuration >= 400 && !this.silenceTimer) {
+                        // Silence détecté -> Envoi automatique de la parole
+                        this.silenceTimer = window.setTimeout(() => {
+                            if (this.state === 'listening') {
+                                this.finalizeListening();
+                            }
+                        }, 750);
+                    }
                 }
-                return;
             }
 
-            this.addMessage('✅ Moteur vocal initialisé (Vosk STT + Qwen3 LLM)', 'system');
+            requestAnimationFrame(checkAudioFrame);
+        };
 
-            // Initialiser TTS
-            await this.initializeTTS();
-            
-            this.updateStatus('Prêt • 100% Offline', 'online');
-            
-        } catch (error) {
-            console.error('Error initializing native plugins:', error);
-            this.updateStatus('Erreur d\'initialisation', 'error');
-            this.addMessage('❌ Erreur lors de l\'initialisation des plugins natifs', 'system');
+        requestAnimationFrame(checkAudioFrame);
+    }
+
+    private stopVAD() {
+        this.isVADActive = false;
+        if (this.silenceTimer) {
+            window.clearTimeout(this.silenceTimer);
+            this.silenceTimer = null;
         }
     }
 
-    private async initializeTTS() {
-        try {
-            // Vérifier si le TTS est disponible
-            const voices = await TextToSpeech.getSupportedVoices();
-            const frenchVoices = voices.voices.filter(v => v.lang?.startsWith('fr'));
-            
-            if (frenchVoices.length === 0) {
-                // Ouvrir l'installation des voix Google
-                await TextToSpeech.openInstall();
-                this.addMessage('📥 Installez les voix françaises pour le TTS', 'system');
-            }
-        } catch (error) {
-            console.warn('TTS initialization warning:', error);
+    private finalizeListening() {
+        this.stopVAD();
+        if (this.mediaRecorder && this.mediaRecorder.state !== 'inactive') {
+            this.mediaRecorder.stop();
+            this.updateUI('thinking');
+            this.playChime(520, 0.05);
         }
     }
 
-    private async toggleConversation() {
-        if (this.isProcessing) {
-            console.warn('⏳ toggleConversation ignoré - Traitement en cours');
+    private stopLiveSession() {
+        this.stopVAD();
+        if (this.mediaRecorder && this.mediaRecorder.state !== 'inactive') {
+            this.mediaRecorder.stop();
+        }
+        this.stopSpeaking();
+        this.updateUI('idle');
+        this.playChime(350, 0.06);
+    }
+
+    private async processAudio() {
+        if (this.recordedChunks.length === 0) {
+            this.updateUI('idle');
             return;
         }
 
-        console.log(`🔄 toggleConversation - État actuel: ${this.isInConversation ? 'EN CONVERSATION' : 'ARRÊTÉ'}`);
-        
-        // Effet visuel immédiat
-        this.recordBtn.style.transform = 'scale(0.90)';
-        setTimeout(() => {
-            this.recordBtn.style.transform = '';
-        }, 150);
-
-        if (this.isInConversation) {
-            await this.stopConversation();
-        } else {
-            await this.startConversation();
-        }
-    }
-
-    private async startConversation() {
-        if (!Capacitor.isNativePlatform() || !this.voice) {
-            this.addMessage('❌ Conversation native disponible uniquement sur Android', 'system');
+        const audioBlob = new Blob(this.recordedChunks, { type: 'audio/webm' });
+        if (audioBlob.size < 1200) {
+            // Trop court, relance
+            setTimeout(() => this.startListening(), 200);
             return;
         }
 
         try {
-            const result = await this.voice.startConversation();
-            
-            if (result.permissionDenied) {
-                this.addMessage('❌ Permission microphone refusée - Activez-la dans les paramètres Android', 'system');
-                return;
-            }
-            
-            if (!result.started) {
-                this.addMessage('❌ Impossible de démarrer la conversation - ' + (result.error || 'Erreur inconnue'), 'system');
-                return;
-            }
-            
-            this.isInConversation = true;
-            this.recordBtn.classList.add('conversation');
-            this.recordBtn.querySelector('.btn-text')!.textContent = 'Conversation Active';
-            
-            this.addMessage('▶️ Conversation ultra dynamique démarrée ! Parlez naturellement...', 'system');
-            this.updateConversationStatus();
-            
-        } catch (error) {
-            console.error('Erreur démarrage conversation:', error);
-            this.addMessage('❌ Erreur lors du démarrage de la conversation', 'system');
-        }
-    }
-
-    private async stopConversation() {
-        if (!this.isInConversation || !this.voice) return;
-
-        try {
-            await this.voice.stopConversation();
-            
-            this.isInConversation = false;
-            this.recordBtn.classList.remove('conversation');
-            this.recordBtn.classList.remove('recording');
-            this.recordBtn.querySelector('.btn-text')!.textContent = 'Parler';
-            this.updateStatus('⏳ Traitement...', 'processing');
-            
-        } catch (error) {
-            console.error('Error stopping recording:', error);
-            this.addMessage('❌ Erreur lors de l\'arrêt de l\'enregistrement', 'system');
-        }
-    }
-
-    // Plus besoin de ces méthodes - VoicePlugin gère tout automatiquement !
-
-    private async speakResponse(text: string) {
-        try {
-            await TextToSpeech.speak({
-                text: text,
-                lang: 'fr-FR',
-                rate: 1.0,
-                pitch: 1.0,
-                volume: 1.0,
-                category: 'ambient'
+            const reader = new FileReader();
+            const b64Promise = new Promise<string>((resolve) => {
+                reader.onloadend = () => resolve((reader.result as string).split(',')[1] || '');
             });
-        } catch (error) {
-            console.warn('TTS Error:', error);
-            this.addMessage('⚠️ TTS non disponible - installez les voix françaises', 'system');
+            reader.readAsDataURL(audioBlob);
+            const audioBase64 = await b64Promise;
+
+            const isLocal = window.location.hostname === 'localhost';
+            const pipelineUrl = isLocal ? '/api/voice/pipeline' : 'https://api.guig.dev/v1/voice/pipeline';
+
+            const response = await fetch(pipelineUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Origin': 'https://guig.dev' },
+                body: JSON.stringify({
+                    audio: audioBase64,
+                    context: 'Tu es UltraBlabla, un assistant vocal ultra-rapide, chaleureux, concis et dynamique. Réponds en français en moins de 35 mots.',
+                    voice: 'fr-female-1',
+                })
+            });
+
+            if (!response.ok) {
+                // Fallback direct
+                await this.executeFallback(audioBase64);
+                return;
+            }
+
+            const data = await response.json();
+
+            if (data.transcript) {
+                this.showCaption('VOUS', data.transcript, false);
+            }
+
+            if (data.response) {
+                this.showCaption('ULTRABLABLA', data.response, false);
+            }
+
+            if (data.audio_b64) {
+                const binaryStr = atob(data.audio_b64);
+                const bytes = new Uint8Array(binaryStr.length);
+                for (let i = 0; i < binaryStr.length; i++) bytes[i] = binaryStr.charCodeAt(i);
+                await this.playAudioBuffer(bytes.buffer);
+            } else if (data.response) {
+                await this.speakText(data.response);
+            } else {
+                this.onPlaybackFinished();
+            }
+
+        } catch (err: any) {
+            console.error('Pipeline error:', err);
+            this.showCaption('SYSTEM', 'Connexion en cours de rétablissement...', true);
+            setTimeout(() => this.startListening(), 1000);
         }
     }
 
-    private addMessage(text: string, type: 'user' | 'ai' | 'system') {
-        // Supprimer le message de bienvenue s'il existe
-        const welcome = this.messages.querySelector('.welcome');
-        if (welcome) {
-            welcome.remove();
-        }
-
-        const messageEl = document.createElement('div');
-        messageEl.className = `message ${type}-message`;
-        messageEl.textContent = text;
-        
-        this.messages.appendChild(messageEl);
-        this.messages.scrollTop = this.messages.scrollHeight;
-
-        // Sauvegarder dans l'historique
-        if (type !== 'system') {
-            this.saveToHistory(text, type);
-        }
-    }
-
-    private clearMessages() {
-        this.messages.innerHTML = `
-            <div class="welcome">
-                <h2>Conversation effacée</h2>
-                <p>Appuyez sur le micro pour recommencer</p>
-                <div class="features">
-                    <div class="feature">
-                        <span class="icon">🎤</span>
-                        <span>Vosk STT Français</span>
-                    </div>
-                    <div class="feature">
-                        <span class="icon">🧠</span>
-                        <span>Qwen3-0.6B Local</span>
-                    </div>
-                    <div class="feature">
-                        <span class="icon">🔊</span>
-                        <span>Google TTS Offline</span>
-                    </div>
-                </div>
-            </div>
-        `;
-    }
-
-    private updateStatus(text: string, type: 'loading' | 'online' | 'error' | 'warning' | 'recording' | 'processing' | 'speaking' | 'listening' | 'active' | 'paused') {
-        this.status.textContent = text;
-        this.status.className = `status ${type}`;
-    }
-
-    private saveToHistory(text: string, type: 'user' | 'ai') {
-        const history = JSON.parse(localStorage.getItem('ultrablabla-history') || '[]');
-        history.push({
-            text,
-            type,
-            timestamp: Date.now()
+    private async executeFallback(audioBase64: string) {
+        const isLocal = window.location.hostname === 'localhost';
+        const asrUrl = isLocal ? '/api/voice/transcribe' : 'https://api.guig.dev/v1/voice/transcribe';
+        const asrRes = await fetch(asrUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Origin': 'https://guig.dev' },
+            body: JSON.stringify({ audio: audioBase64, mime_type: 'audio/webm' })
         });
-        
-        // Garder seulement les 100 derniers messages
-        if (history.length > 100) {
-            history.shift();
+        const asrData = asrRes.ok ? await asrRes.json() : { text: '' };
+        const text = asrData.text || '';
+
+        if (!text.trim()) {
+            this.onPlaybackFinished();
+            return;
         }
-        
-        localStorage.setItem('ultrablabla-history', JSON.stringify(history));
+
+        this.showCaption('VOUS', text, false);
+
+        const chatUrl = isLocal ? '/api/chat' : 'https://api.guig.dev/v1/chat/completions';
+        const chatRes = await fetch(chatUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Origin': 'https://guig.dev' },
+            body: JSON.stringify({
+                model: '@cf/meta/llama-3.1-8b-instruct-fast',
+                messages: [
+                    { role: 'system', content: 'Tu es UltraBlabla. Réponds en français de façon vivante et concise en moins de 30 mots.' },
+                    { role: 'user', content: text }
+                ],
+                max_tokens: 120,
+                temperature: 0.6
+            })
+        });
+
+        const chatData = await chatRes.json();
+        const reply = chatData.choices?.[0]?.message?.content || chatData.response || '';
+        this.showCaption('ULTRABLABLA', reply, false);
+        await this.speakText(reply);
     }
 
-    private updateVoiceIndicator(active: boolean, level: number) {
-        if (active && level > 0.1) {
-            this.recordBtn?.classList.add('voice-active');
-        } else {
-            this.recordBtn?.classList.remove('voice-active');
-        }
-    }
+    private async speakText(text: string) {
+        try {
+            this.updateUI('speaking');
+            const isLocal = window.location.hostname === 'localhost';
+            const speakUrl = isLocal ? '/api/voice/speak' : 'https://api.guig.dev/v1/voice/speak';
 
-    private showSettings() {
-        // TODO: Implémenter l'écran de paramètres
-        this.addMessage('⚙️ Paramètres - À implémenter', 'system');
-    }
-
-    private initializeChatBox(): void {
-        console.log('Initialisation du ChatBox Neural');
-        
-        const chatToggle = document.getElementById('chatToggleBtn') as HTMLButtonElement;
-        const chatContent = document.getElementById('chatboxContent') as HTMLElement;
-        const sendBtn = document.getElementById('neuralSendBtn') as HTMLButtonElement;
-        const textarea = document.getElementById('neuralInput') as HTMLTextAreaElement;
-        const messagesContainer = document.getElementById('neuralMessages') as HTMLElement;
-        const statusText = document.getElementById('inputStatusText') as HTMLElement | null;
-        const statusIndicator = document.getElementById('statusIndicator') as HTMLElement | null;
-        
-        if (chatToggle && chatContent) {
-            // Toggle ChatBox visibility
-            chatToggle.addEventListener('click', () => {
-                const isExpanded = chatContent.style.display !== 'none';
-                chatContent.style.display = isExpanded ? 'none' : 'flex';
-                chatToggle.querySelector('.toggle-text')!.textContent = isExpanded ? 'EXPAND' : 'COLLAPSE';
+            let res = await fetch(speakUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Origin': 'https://guig.dev' },
+                body: JSON.stringify({ text, voice: 'fr-female-1', lang: 'fr' })
             });
+
+            if (!res.ok && !isLocal) {
+                res = await fetch('https://api.guig.dev/v1/audio/speech', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Origin': 'https://guig.dev' },
+                    body: JSON.stringify({ input: text, voice: 'asteria', model: '@cf/deepgram/aura-1' })
+                });
+            }
+
+            const arrayBuffer = await res.arrayBuffer();
+            await this.playAudioBuffer(arrayBuffer);
+        } catch (err) {
+            console.error('TTS error:', err);
+            this.onPlaybackFinished();
         }
+    }
 
-        if (sendBtn && textarea && messagesContainer) {
-            // ✅ ACTIVER le bouton quand l'utilisateur tape
-            textarea.addEventListener('input', () => {
-                const hasText = textarea.value.trim().length > 0;
-                sendBtn.disabled = !hasText;
-                console.log(`💬 Textarea input: "${textarea.value}" - Bouton ${hasText ? 'ACTIVÉ' : 'DÉSACTIVÉ'}`);
-            });
-            
-            const sendMessage = async () => {
-                const message = textarea.value.trim();
-                if (!message) {
-                    console.warn('❌ Message vide, envoi annulé');
-                    return;
-                }
+    private async playAudioBuffer(arrayBuffer: ArrayBuffer) {
+        await this.ensureAudioContext();
+        if (!this.audioCtx || !this.gainNode) return;
 
-                console.log('📤 Envoi du message:', message);
-                
-                // Désactiver le bouton pendant l'envoi
-                sendBtn.disabled = true;
-                
-                // Ajouter message utilisateur
-                this.addChatMessage(messagesContainer, 'user', '🧠', message);
-                textarea.value = '';
-                
-                // Mettre à jour le status (optionnel)
-                if (statusIndicator && statusText) {
-                    this.updateChatStatus(statusIndicator, statusText, 'processing', 'PROCESSING...');
-                }
-                
-                // Ajouter indicateur de typing
-                const typingElement = this.addTypingIndicator(messagesContainer);
-                
-                try {
-                    // Appeler l'IA via VoicePlugin
-                    console.log('🤖 Appel VoicePlugin.processText...');
-                    const response = await this.getAIResponse(message);
-                    console.log('✅ Réponse reçue:', response);
-                    
-                    // Supprimer indicateur de typing
-                    if (typingElement) {
-                        messagesContainer.removeChild(typingElement);
-                    }
-                    
-                    // Ajouter réponse de l'IA
-                    this.addChatMessage(messagesContainer, 'ai', '🤖', response);
-                    if (statusIndicator && statusText) {
-                        this.updateChatStatus(statusIndicator, statusText, 'ready', 'READY');
-                    }
-                    
-                } catch (error) {
-                    console.error('❌ Erreur ChatBox:', error);
-                    
-                    if (typingElement) {
-                        messagesContainer.removeChild(typingElement);
-                    }
-                    
-                    this.addChatMessage(messagesContainer, 'ai', '⚠️', 
-                        `Erreur de connexion avec le modèle neural: ${error}`);
-                    if (statusIndicator && statusText) {
-                        this.updateChatStatus(statusIndicator, statusText, 'error', 'ERROR');
-                    }
-                }
+        try {
+            this.stopSpeaking();
+            this.updateUI('speaking');
+
+            const audioBuffer = await this.audioCtx.decodeAudioData(arrayBuffer);
+            const source = this.audioCtx.createBufferSource();
+            source.buffer = audioBuffer;
+
+            if (this.analyser) {
+                source.connect(this.analyser);
+                this.analyser.connect(this.gainNode);
+            } else {
+                source.connect(this.gainNode);
+            }
+
+            source.onended = () => {
+                this.currentAudioSource = null;
+                this.onPlaybackFinished();
             };
 
-            // Event listeners
-            sendBtn.addEventListener('click', (e) => {
-                console.log('🖱️ Clic sur bouton SEND détecté !');
-                e.preventDefault();
-                e.stopPropagation();
-                sendMessage();
-            });
-            
-            textarea.addEventListener('keypress', (e) => {
-                if (e.key === 'Enter' && !e.shiftKey) {
-                    e.preventDefault();
-                    console.log('⌨️ Touche ENTER détectée !');
-                    sendMessage();
-                }
-            });
+            this.currentAudioSource = source;
+            source.start(0);
 
-            // Message système initial avec test des permissions
-            setTimeout(async () => {
-                this.addChatMessage(messagesContainer, 'system', '⚡', 
-                    'Neural ChatBox activé. Test des permissions...');
-                
-                try {
-                    // Test explicite des permissions microphone
-                    const permResult = await this.voice.requestMicrophonePermission();
-                    
-                    if (permResult.granted) {
-                        this.addChatMessage(messagesContainer, 'system', '✅', 
-                            'Permissions microphone accordées ! Modèle Qwen3-0.6B prêt.');
-                    } else {
-                        this.addChatMessage(messagesContainer, 'system', '❌', 
-                            `Permission microphone requise. État: ${permResult.state}`);
-                        
-                        // Ajouter un bouton pour demander les permissions
-                        const buttonDiv = document.createElement('div');
-                        buttonDiv.innerHTML = `
-                            <button id="requestPermBtn" style="
-                                background: linear-gradient(135deg, var(--holo-primary), var(--energy-blue));
-                                border: none;
-                                border-radius: 15px;
-                                padding: 10px 20px;
-                                color: white;
-                                cursor: pointer;
-                                margin-top: 10px;
-                            ">🎤 Demander les permissions</button>
-                        `;
-                        messagesContainer.appendChild(buttonDiv);
-                        
-                        buttonDiv.querySelector('#requestPermBtn')?.addEventListener('click', async () => {
-                            const result = await this.voice.requestMicrophonePermission();
-                            this.addChatMessage(messagesContainer, 'system', 
-                                result.granted ? '✅' : '❌', 
-                                result.granted ? 'Permissions accordées !' : 'Permissions refusées');
-                        });
+        } catch (err) {
+            console.error('Audio decode error:', err);
+            this.onPlaybackFinished();
+        }
+    }
+
+    private stopSpeaking() {
+        if (this.currentAudioSource && this.audioCtx && this.gainNode) {
+            try {
+                this.gainNode.gain.setValueAtTime(this.gainNode.gain.value, this.audioCtx.currentTime);
+                this.gainNode.gain.linearRampToValueAtTime(0.001, this.audioCtx.currentTime + 0.035);
+                setTimeout(() => {
+                    if (this.currentAudioSource) {
+                        try {
+                            this.currentAudioSource.stop();
+                            this.currentAudioSource.disconnect();
+                        } catch { /* ignore */ }
+                        this.currentAudioSource = null;
                     }
-                } catch (error) {
-                    this.addChatMessage(messagesContainer, 'system', '⚠️', 
-                        'Erreur test permissions: ' + error);
-                }
-                
-                if (statusIndicator && statusText) {
-                    this.updateChatStatus(statusIndicator, statusText, 'ready', 'READY');
-                }
-            }, 1000);
+                    if (this.gainNode && this.audioCtx) {
+                        this.gainNode.gain.setValueAtTime(1.0, this.audioCtx.currentTime);
+                    }
+                }, 40);
+            } catch {
+                this.currentAudioSource = null;
+            }
         }
     }
 
-    private addChatMessage(container: HTMLElement, type: 'system' | 'user' | 'ai', avatar: string, text: string): void {
-        const messageDiv = document.createElement('div');
-        messageDiv.className = `${type}-message`;
-        
-        messageDiv.innerHTML = `
-            <div class="message-avatar ${type}">
-                ${avatar}
-            </div>
-            <div class="message-bubble">
-                <div class="message-text">${text}</div>
-            </div>
-        `;
-        
-        container.appendChild(messageDiv);
-        container.scrollTop = container.scrollHeight;
+    private onPlaybackFinished() {
+        // Enchaîne directement l'écoute pour conversation continue
+        setTimeout(() => this.startListening(), 200);
     }
 
-    private addTypingIndicator(container: HTMLElement): HTMLElement {
-        const typingDiv = document.createElement('div');
-        typingDiv.className = 'ai-message typing-message';
-        
-        typingDiv.innerHTML = `
-            <div class="message-avatar ai">🤖</div>
-            <div class="message-bubble">
-                <div class="message-text">
-                    <div class="typing-indicator">
-                        <div class="typing-dot"></div>
-                        <div class="typing-dot"></div>
-                        <div class="typing-dot"></div>
-                    </div>
-                </div>
-            </div>
-        `;
-        
-        container.appendChild(typingDiv);
-        container.scrollTop = container.scrollHeight;
-        return typingDiv;
+    private showCaption(speaker: string, text: string, isPlaceholder: boolean) {
+        if (!this.captionSpeaker || !this.captionText) return;
+        this.captionSpeaker.textContent = speaker;
+        this.captionSpeaker.className = `caption-speaker ${speaker.toLowerCase()}`;
+        this.captionText.textContent = text;
+        this.captionText.className = `caption-text ${isPlaceholder ? 'placeholder' : ''}`;
     }
 
-    private updateChatStatus(indicator: HTMLElement, text: HTMLElement, status: 'ready' | 'processing' | 'error', message: string): void {
-        indicator.className = `status-indicator ${status}`;
-        text.textContent = message;
+    private updateUI(newState: LiveState) {
+        this.state = newState;
+        this.ambientBg?.classList.remove('listening', 'speaking');
+        this.statusDot?.classList.remove('speaking', 'processing');
+
+        if (this.mainToggleBtn) {
+            this.mainToggleBtn.classList.toggle('active', newState !== 'idle');
+        }
+
+        switch (newState) {
+            case 'idle':
+                if (this.orbIcon) this.orbIcon.textContent = '🎙️';
+                if (this.orbLabel) this.orbLabel.textContent = 'TOUCHER POUR PARLER';
+                if (this.btnIcon) this.btnIcon.textContent = '⚡';
+                if (this.btnText) this.btnText.textContent = 'DÉMARRER LA DISCUSSION';
+                break;
+            case 'listening':
+                this.ambientBg?.classList.add('listening');
+                if (this.orbIcon) this.orbIcon.textContent = '🎧';
+                if (this.orbLabel) this.orbLabel.textContent = 'À VOUS LA PAROLE';
+                if (this.btnIcon) this.btnIcon.textContent = '⏹️';
+                if (this.btnText) this.btnText.textContent = 'ARRÊTER';
+                break;
+            case 'thinking':
+                this.statusDot?.classList.add('processing');
+                if (this.orbIcon) this.orbIcon.textContent = '✨';
+                if (this.orbLabel) this.orbLabel.textContent = 'RÉFLEXION...';
+                if (this.btnIcon) this.btnIcon.textContent = '⏹️';
+                if (this.btnText) this.btnText.textContent = 'ARRÊTER';
+                break;
+            case 'speaking':
+                this.ambientBg?.classList.add('speaking');
+                this.statusDot?.classList.add('speaking');
+                if (this.orbIcon) this.orbIcon.textContent = '🔊';
+                if (this.orbLabel) this.orbLabel.textContent = 'IA PARLE (INTERROMPRE)';
+                if (this.btnIcon) this.btnIcon.textContent = '⏹️';
+                if (this.btnText) this.btnText.textContent = 'ARRÊTER';
+                break;
+        }
     }
 
-    private async getAIResponse(message: string): Promise<string> {
+    private playChime(freq: number, duration: number) {
         try {
-            console.log('Envoi du message à l\'IA:', message);
-            
-            // D'abord tester si le système est prêt
-            if (message.toLowerCase().includes('permission') || message.toLowerCase().includes('micro')) {
-                const permCheck = await this.voice.checkPermissions();
-                return `Système de permissions: ${permCheck.granted ? '✅ ACTIF' : '❌ INACTIF'} (État: ${permCheck.microphone})`;
-            }
-            
-            // Test du serveur LLM intégré
-            if (message.toLowerCase().includes('test') || message.toLowerCase().includes('modèle')) {
-                try {
-                    const initResult = await this.voice.init();
-                    return `État du modèle LLM: ${initResult.llm ? '✅ Chargé' : '❌ Erreur'} | Vosk: ${initResult.vosk ? '✅ OK' : '❌ KO'}`;
-                } catch (error) {
-                    return `Erreur initialisation: ${error}`;
-                }
-            }
-            
-            // Utiliser VoicePlugin pour tester l'IA
-            const result = await this.voice.processText({ 
-                text: message,
-                action: 'chat'
-            });
-            
-            if (result && result.response) {
-                return result.response;
-            } else {
-                // Fallback avec réponses plus informatives
-                return this.getFallbackResponse(message);
-            }
-            
-        } catch (error) {
-            console.error('Erreur lors de l\'appel à l\'IA:', error);
-            return `❌ Erreur: ${error}. Fallback: ${this.getFallbackResponse(message)}`;
-        }
+            if (!this.audioCtx) return;
+            const osc = this.audioCtx.createOscillator();
+            const gain = this.audioCtx.createGain();
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(freq, this.audioCtx.currentTime);
+            gain.gain.setValueAtTime(0.04, this.audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.0001, this.audioCtx.currentTime + duration);
+            osc.connect(gain);
+            gain.connect(this.audioCtx.destination);
+            osc.start();
+            osc.stop(this.audioCtx.currentTime + duration);
+        } catch { /* ignore */ }
     }
 
-    private getFallbackResponse(message: string): string {
-        // Réponses spécialisées selon le contenu
-        if (message.toLowerCase().includes('bonjour') || message.toLowerCase().includes('salut')) {
-            return `Bonjour ! Je suis UltraBlabla AI. Système neural en ligne. Comment puis-je vous aider ?`;
-        }
-        
-        if (message.toLowerCase().includes('comment') && message.toLowerCase().includes('vas')) {
-            return `Système neural fonctionnel à 100%. Toutes mes fonctions cognitives sont opérationnelles.`;
-        }
-        
-        if (message.toLowerCase().includes('quoi') || message.toLowerCase().includes('que')) {
-            return `Je suis une IA vocale intégrée avec Vosk STT et Qwen3-0.6B LLM. Je peux répondre à vos questions.`;
-        }
-        
-        const responses = [
-            `Message reçu et traité par UltraBlabla AI. Analyse: "${message.substring(0, 50)}${message.length > 50 ? '...' : ''}"`,
-            `Système neural actif. Votre requête a été intégrée dans ma base de connaissances.`,
-            `IA conversationnelle prête. Modèle Qwen3 en mode test avec votre message.`,
-            `Interface cognitive opérationnelle. Processing terminé avec succès.`,
-            `Réponse générée par le noyau neural UltraBlabla. Status: ONLINE`
-        ];
-        
-        const randomIndex = Math.floor(Math.random() * responses.length);
-        return responses[randomIndex];
+    /**
+     * 60 FPS Morphing Quantum Live Orb
+     */
+    private initOrbVisualizer() {
+        if (!this.canvas || !this.canvasCtx) return;
+
+        const resize = () => {
+            const rect = this.canvas.parentElement?.getBoundingClientRect();
+            if (rect) {
+                this.canvas.width = rect.width;
+                this.canvas.height = rect.height;
+            }
+        };
+        resize();
+        window.addEventListener('resize', resize);
+
+        const freqData = new Uint8Array(128);
+        let phase = 0;
+
+        const render = () => {
+            if (!this.canvasCtx) return;
+            this.canvasCtx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+
+            const cx = this.canvas.width / 2;
+            const cy = this.canvas.height / 2;
+            phase += 0.02;
+
+            if (this.analyser && (this.state === 'listening' || this.state === 'speaking')) {
+                this.analyser.getByteFrequencyData(freqData);
+
+                const isListening = this.state === 'listening';
+                const baseRadius = 88;
+                const colors = isListening
+                    ? ['rgba(6, 182, 212, 0.7)', 'rgba(59, 130, 246, 0.5)', 'rgba(139, 92, 246, 0.3)']
+                    : ['rgba(236, 72, 153, 0.7)', 'rgba(168, 85, 247, 0.5)', 'rgba(244, 63, 94, 0.3)'];
+
+                this.canvasCtx.save();
+                this.canvasCtx.translate(cx, cy);
+
+                colors.forEach((col, idx) => {
+                    this.canvasCtx!.beginPath();
+                    for (let i = 0; i < freqData.length; i += 2) {
+                        const angle = (i / freqData.length) * Math.PI * 2 + phase * (idx % 2 === 0 ? 1 : -1);
+                        const v = freqData[i] / 255;
+                        const r = baseRadius + (v * 45 * (idx + 1) * 0.5) + (idx * 8);
+                        const x = Math.cos(angle) * r;
+                        const y = Math.sin(angle) * r;
+
+                        if (i === 0) this.canvasCtx!.moveTo(x, y);
+                        else this.canvasCtx!.lineTo(x, y);
+                    }
+                    this.canvasCtx!.closePath();
+                    this.canvasCtx!.strokeStyle = col;
+                    this.canvasCtx!.lineWidth = 2.5;
+                    this.canvasCtx!.stroke();
+                });
+
+                this.canvasCtx.restore();
+            } else if (this.state === 'thinking') {
+                // Breathing glow orb
+                const r = 85 + Math.sin(phase * 3) * 8;
+                this.canvasCtx.save();
+                this.canvasCtx.translate(cx, cy);
+                this.canvasCtx.beginPath();
+                this.canvasCtx.arc(0, 0, r, 0, Math.PI * 2);
+                this.canvasCtx.strokeStyle = 'rgba(139, 92, 246, 0.6)';
+                this.canvasCtx.lineWidth = 3;
+                this.canvasCtx.stroke();
+                this.canvasCtx.restore();
+            }
+
+            requestAnimationFrame(render);
+        };
+
+        requestAnimationFrame(render);
     }
 }
 
-// Initialiser l'app quand le DOM est prêt
-document.addEventListener('DOMContentLoaded', () => {
-    new UltraBlablaVoiceApp();
-    console.log('🚀 UltraBlabla initialized - Native Android Voice AI');
-});
-
+new UltraBlablaLiveApp();

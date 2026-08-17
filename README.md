@@ -12,14 +12,19 @@ UltraBlabla est une application vocale "Edge" conçue pour offrir une interactio
 - ⚡ **Latence Quasi-Nulle (Edge)** : Pipeline de traitement composite (Whisper Large V3 + Deepgram Aura TTS) exécuté au plus près de l'utilisateur.
 - 🎙️ **Détection Vocale Adaptative (VAD)** : Écoute intelligente à 60 FPS qui détecte précisément la fin de parole pour un enchaînement naturel.
 - 🌌 **Design Holographique "Next Gen"** : Interface neuronale avec effets quantiques, moniteur d'activité en temps réel, et mode "ChatBox" intégré.
-- 📱 **Multi-plateformes** : WebApp ultra-performante et application native Android 15 (Target SDK 35) via Capacitor 8.5.
+- 📱 **Multi-plateformes "Next-Gen 2028"** : 
+  - **PWA (Progressive Web App)** 100% installable avec Service Worker (mode hors-ligne complet).
+  - **Application Desktop Native** ultra-légère via **Wails v3** (WebView2).
+  - **Android 15 (Target SDK 35)** optimisé via Capacitor 8.5.
+- 🎨 **Technologies Web Avancées** : Préparation pour le *Neural Canvas* 2028 avec support de la **Web Audio API** et **WebGPU** / WebGL2.
 
 ## 🏗️ Architecture
 
 L'application est structurée en plusieurs couches haute performance :
 1. **Frontend UI** : Vanilla JS/HTML/CSS optimisé. Aucune dépendance lourde, garantissant une fluidité parfaite des animations holographiques.
-2. **Logiciel Audio (VAD/WebRTC)** : Script client `webapp.ts` gérant la capture microphonique et la détection d'énergie (silences & onsets).
-3. **Backend Proxy (Bun & ElysiaJS)** : Un serveur relais local ultra-rapide (`src/server.ts`) qui sécurise les requêtes vers l'API Cloudflare globale (`https://api.guig.dev`).
+2. **Desktop WebView2 (Wails)** : Conteneur natif (`src-wails/`) isolé et indépendant du build mobile.
+3. **Logiciel Audio (VAD/WebRTC)** : Script client `webapp.ts` gérant la capture microphonique et la détection d'énergie (silences & onsets).
+4. **Backend Proxy (Bun & ElysiaJS)** : Un serveur relais local ultra-rapide (`src/server.ts`) qui sécurise les requêtes vers l'API Cloudflare globale (`https://api.guig.dev`).
 
 ## 🚀 Démarrage Rapide (Quick Start)
 
@@ -33,7 +38,7 @@ docker build -t ultrablabla:latest .
 docker run -d -p 3000:3000 --name ultrablabla ultrablabla:latest
 ```
 
-### 💻 Via Bun (Développement Local)
+### 💻 Via Bun (Développement Local PWA)
 ```bash
 # 1. Installer les dépendances
 bun install
@@ -43,6 +48,15 @@ bun run build
 
 # 3. Lancer le serveur de développement avec Hot-Reload
 bun run dev
+```
+
+### 🖥️ Build Desktop (Wails v3 / WebView2)
+```bash
+# 1. Lancer l'app native en mode développement (Live Reload)
+bun run wails:dev
+
+# 2. Compiler l'exécutable final Windows/Mac/Linux
+bun run wails:build
 ```
 
 ### 🤖 Build Android (Capacitor)

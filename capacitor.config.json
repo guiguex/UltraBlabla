@@ -1,0 +1,14 @@
+{
+  "appId": "com.ultrablabla.app",
+  "appName": "UltraBlabla",
+  "webDir": "public",
+  "server": {
+    "androidScheme": "https"
+  },
+  "android": {
+    "allowMixedContent": true
+  },
+  "plugins": {
+    "@capacitor-community/text-to-speech": {}
+  }
+}

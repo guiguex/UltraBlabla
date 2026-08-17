@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "777061428103",
+    "project_id": "blablabla-74743714-2076b",
+    "storage_bucket": "blablabla-74743714-2076b.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:777061428103:android:0e48adde09b64a96ffc122",
+        "android_client_info": {
+          "package_name": "com.ultrablabla.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBaL4pKN5JFHZCDL5ssvl7_z9107MTwk8w"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

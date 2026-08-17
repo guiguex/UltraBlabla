@@ -42,9 +42,19 @@ self.addEventListener('fetch', (e) => {
   const req = e.request;
   const url = new URL(req.url);
 
-  // Bypass API calls entirely
-  if (url.pathname.startsWith('/api/')) {
-    return; // Let the browser handle it directly
+  // Bypass API calls entirely and non-GET requests
+  if (req.method !== 'GET' || url.pathname.startsWith('/api/')) {
+    return;
+  }
+
+  // Bypass Cloudflare-injected beacons (RUM/analytics POST no-cors)
+  if (url.pathname.startsWith('/cdn-cgi/')) {
+    return;
+  }
+
+  // Bypass external domains (like Cloudflare Insights, Analytics, etc.)
+  if (url.origin !== location.origin) {
+    return;
   }
 
   e.respondWith((async () => {
@@ -52,17 +62,15 @@ self.addEventListener('fetch', (e) => {
     const cachedResponse = await cache.match(req);
     
     const fetchPromise = fetch(req).then((networkResponse) => {
-      // Put a copy in cache for next time
       if (networkResponse.ok) {
         cache.put(req, networkResponse.clone());
       }
       return networkResponse;
     }).catch(() => {
-      // Fallback for offline navigation
       if (req.mode === 'navigate') {
         return cache.match('/index.html');
       }
-      return null;
+      return Response.error();
     });
 
     return cachedResponse || fetchPromise;

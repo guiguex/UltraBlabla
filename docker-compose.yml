@@ -7,3 +7,4 @@ services:
     environment:
       - NODE_ENV=production
       - PORT=44432
+      - MCP_AUTH_TOKEN=${MCP_AUTH_TOKEN}

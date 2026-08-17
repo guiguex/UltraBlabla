@@ -50,6 +50,8 @@ class UltraBlablaLiveApp {
         }
     }
 
+    private turnstileToken: string | null = null;
+
     private async initNextGenWeb() {
         // Enregistrement PWA Service Worker (Next-Gen Offline)
         if ('serviceWorker' in navigator) {
@@ -59,6 +61,15 @@ class UltraBlablaLiveApp {
             } catch (err) {
                 console.error('[Web Next-Gen] Erreur SW:', err);
             }
+        }
+        
+        // Initialiser Turnstile
+        if (typeof (window as any).turnstile !== 'undefined') {
+            (window as any).turnstile.render('#turnstile-container', {
+                sitekey: '0x4AAAAAAEP_Ht6yB0F4_r-k',
+                callback: (token: string) => { this.turnstileToken = token; },
+                'refresh-expired': 'auto'
+            });
         }
     }
 
@@ -318,12 +329,15 @@ class UltraBlablaLiveApp {
             reader.readAsDataURL(audioBlob);
             const audioBase64 = await b64Promise;
 
-            const isLocal = window.location.hostname === 'localhost';
-            const pipelineUrl = isLocal ? '/api/voice/pipeline' : 'https://api.guig.dev/v1/voice/pipeline';
+            const pipelineUrl = '/api/voice/pipeline';
 
             const response = await fetch(pipelineUrl, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'Origin': 'https://guig.dev' },
+                headers: { 
+                    'Content-Type': 'application/json', 
+                    'Origin': 'https://guig.dev',
+                    'X-Turnstile-Token': this.turnstileToken || ''
+                },
                 body: JSON.stringify({
                     audio: audioBase64,
                     context: 'Tu es UltraBlabla, un assistant vocal ultra-rapide, chaleureux, concis et dynamique. Réponds en français en moins de 35 mots.',
@@ -366,11 +380,14 @@ class UltraBlablaLiveApp {
     }
 
     private async executeFallback(audioBase64: string) {
-        const isLocal = window.location.hostname === 'localhost';
-        const asrUrl = isLocal ? '/api/voice/transcribe' : 'https://api.guig.dev/v1/voice/transcribe';
+        const asrUrl = '/api/voice/transcribe';
         const asrRes = await fetch(asrUrl, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'Origin': 'https://guig.dev' },
+            headers: { 
+                'Content-Type': 'application/json', 
+                'Origin': 'https://guig.dev',
+                'X-Turnstile-Token': this.turnstileToken || ''
+            },
             body: JSON.stringify({ audio: audioBase64, mime_type: 'audio/webm' })
         });
         const asrData = asrRes.ok ? await asrRes.json() : { text: '' };
@@ -383,10 +400,14 @@ class UltraBlablaLiveApp {
 
         this.addMessage('VOUS', text, 'user');
 
-        const chatUrl = isLocal ? '/api/chat' : 'https://api.guig.dev/v1/chat/completions';
+        const chatUrl = '/api/chat';
         const chatRes = await fetch(chatUrl, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'Origin': 'https://guig.dev' },
+            headers: { 
+                'Content-Type': 'application/json', 
+                'Origin': 'https://guig.dev',
+                'X-Turnstile-Token': this.turnstileToken || ''
+            },
             body: JSON.stringify({
                 model: '@cf/meta/llama-3.1-8b-instruct-fast',
                 messages: [
@@ -407,22 +428,17 @@ class UltraBlablaLiveApp {
     private async speakText(text: string) {
         try {
             this.updateUI('speaking');
-            const isLocal = window.location.hostname === 'localhost';
-            const speakUrl = isLocal ? '/api/voice/speak' : 'https://api.guig.dev/v1/voice/speak';
+            const speakUrl = '/api/voice/speak';
 
             let res = await fetch(speakUrl, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'Origin': 'https://guig.dev' },
+                headers: { 
+                    'Content-Type': 'application/json', 
+                    'Origin': 'https://guig.dev',
+                    'X-Turnstile-Token': this.turnstileToken || ''
+                },
                 body: JSON.stringify({ text, voice: 'fr-female-1', lang: 'fr' })
             });
-
-            if (!res.ok && !isLocal) {
-                res = await fetch('https://api.guig.dev/v1/audio/speech', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'Origin': 'https://guig.dev' },
-                    body: JSON.stringify({ input: text, voice: 'asteria', model: '@cf/deepgram/aura-1' })
-                });
-            }
 
             const arrayBuffer = await res.arrayBuffer();
             await this.playAudioBuffer(arrayBuffer);

@@ -6,11 +6,16 @@ const AI_API_URL = process.env.AI_API_URL || 'https://api.guig.dev';
 const PORT = Number(process.env.PORT) || 3000;
 
 // Headers par défaut pour la communication avec api.guig.dev
-const getProxyHeaders = (extraHeaders: Record<string, string> = {}) => ({
-  'Origin': 'https://guig.dev',
-  'User-Agent': 'UltraBlabla-Voice-Matrix/4.0',
-  ...extraHeaders,
-});
+const getProxyHeaders = (incomingHeaders: any = {}, extraHeaders: Record<string, string> = {}) => {
+  const headers: Record<string, string> = {
+    'Origin': 'https://guig.dev',
+    'User-Agent': 'UltraBlabla-Voice-Matrix/4.0',
+    'Authorization': `Bearer ${process.env.MCP_AUTH_TOKEN || ''}`,
+    ...extraHeaders,
+  };
+  if (incomingHeaders['x-turnstile-token']) headers['X-Turnstile-Token'] = incomingHeaders['x-turnstile-token'];
+  return headers;
+};
 
 // Mapping des voix vers les speakers supportés
 const VOICE_MAPPING: Record<string, { model?: string; speaker?: string; voice?: string }> = {
@@ -32,7 +37,7 @@ const app = new Elysia()
   .get('/*', async ({ params, set }) => {
     const path = params['*'];
     if (!path) return new Response('Not found', { status: 404 });
-    
+
     const file = Bun.file(new URL(`../public/${path}`, import.meta.url));
     if (await file.exists()) {
       const ext = path.split('.').pop()?.toLowerCase();
@@ -64,9 +69,9 @@ const app = new Elysia()
   })
 
   // 1. One-shot Voice Pipeline (STT -> LLM -> TTS)
-  .post('/api/voice/pipeline', async ({ body, set }) => {
+  .post('/api/voice/pipeline', async ({ body, headers, set }) => {
     const { audio, context, voice = 'fr-female-1' } = body as { audio: string; context?: string; voice?: string };
-    
+
     if (!audio) {
       set.status = 400;
       return { error: 'Audio base64 requis' };
@@ -76,7 +81,7 @@ const app = new Elysia()
       // 1. Tentative avec le endpoint distant /v1/voice/pipeline
       const response = await fetch(`${AI_API_URL}/v1/voice/pipeline`, {
         method: 'POST',
-        headers: getProxyHeaders({ 'Content-Type': 'application/json' }),
+        headers: getProxyHeaders(headers, { 'Content-Type': 'application/json' }),
         body: JSON.stringify({ audio, context, voice })
       });
 
@@ -90,14 +95,14 @@ const app = new Elysia()
 
       // 2. Fallback automatique composite : ASR -> LLM -> TTS
       console.log('🔄 Fallback pipeline composite en cours...');
-      
+
       // Étape A : Transcription ASR
       const asrRes = await fetch(`${AI_API_URL}/v1/voice/transcribe`, {
         method: 'POST',
-        headers: getProxyHeaders({ 'Content-Type': 'application/json' }),
+        headers: getProxyHeaders(headers, { 'Content-Type': 'application/json' }),
         body: JSON.stringify({ audio, mime_type: 'audio/webm' })
       });
-      
+
       const asrData = asrRes.ok ? await asrRes.json() : { text: '' };
       const userText = asrData.text || '';
 
@@ -105,14 +110,38 @@ const app = new Elysia()
         return { transcript: '', response: "Je n'ai pas bien entendu, pouvez-vous répéter ?", audio_b64: '', audio_format: 'mp3' };
       }
 
+      // Étape A.5 : Web Search (Intelligence Upgrade)
+      let searchContext = '';
+      const searchKeywords = ['météo', "aujourd'hui", 'news', 'actualité', 'qui a gagné', 'qui est', 'cherche', 'internet', 'quoi de neuf'];
+      const needsSearch = searchKeywords.some(kw => userText.toLowerCase().includes(kw));
+
+      if (needsSearch) {
+        console.log(`🔍 Intent de recherche détecté pour: "${userText}"`);
+        try {
+          const ddgRes = await fetch(`https://html.duckduckgo.com/html/?q=${encodeURIComponent(userText)}`);
+          if (ddgRes.ok) {
+            const html = await ddgRes.text();
+            const snippets = html.match(/<a class="result__snippet[^>]*>(.*?)<\/a>/gi);
+            if (snippets && snippets.length > 0) {
+              const cleanSnippets = snippets.slice(0, 2).map(s => s.replace(/(<([^>]+)>)/gi, ""));
+              searchContext = `\n\n[CONTEXTE WEB EN TEMPS RÉEL: ${cleanSnippets.join(' | ')}] Utilise ces infos pour répondre.`;
+            }
+          }
+        } catch (e) {
+          console.warn('Erreur recherche web:', e);
+        }
+      }
+
       // Étape B : LLM Llama 3.1 8B
+      const systemPrompt = (context || 'Tu es UltraBlabla, un assistant vocal ultra-rapide. Réponds en français en moins de 40 mots.') + searchContext;
+
       const chatRes = await fetch(`${AI_API_URL}/v1/chat/completions`, {
         method: 'POST',
-        headers: getProxyHeaders({ 'Content-Type': 'application/json' }),
+        headers: getProxyHeaders(headers, { 'Content-Type': 'application/json' }),
         body: JSON.stringify({
           model: '@cf/meta/llama-3.1-8b-instruct-fast',
           messages: [
-            { role: 'system', content: context || 'Tu es UltraBlabla, un assistant vocal ultra-rapide. Réponds en français en moins de 40 mots.' },
+            { role: 'system', content: systemPrompt },
             { role: 'user', content: userText }
           ],
           max_tokens: 150,
@@ -128,7 +157,7 @@ const app = new Elysia()
       try {
         const ttsRes = await fetch(`${AI_API_URL}/v1/audio/speech`, {
           method: 'POST',
-          headers: getProxyHeaders({ 'Content-Type': 'application/json' }),
+          headers: getProxyHeaders(headers, { 'Content-Type': 'application/json' }),
           body: JSON.stringify({
             input: aiReply,
             voice: VOICE_MAPPING[voice]?.voice || 'asteria',
@@ -159,11 +188,11 @@ const app = new Elysia()
   })
 
   // 2. Transcription Vocale (Whisper Large V3 Turbo)
-  .post('/api/voice/transcribe', async ({ body, set }) => {
+  .post('/api/voice/transcribe', async ({ body, headers, set }) => {
     try {
       const response = await fetch(`${AI_API_URL}/v1/voice/transcribe`, {
         method: 'POST',
-        headers: getProxyHeaders({ 'Content-Type': 'application/json' }),
+        headers: getProxyHeaders(headers, { 'Content-Type': 'application/json' }),
         body: JSON.stringify(body)
       });
 
@@ -182,7 +211,7 @@ const app = new Elysia()
   })
 
   // 3. Synthèse Vocale (MeloTTS FR / Deepgram Aura-1/2)
-  .post('/api/voice/speak', async ({ body, set }) => {
+  .post('/api/voice/speak', async ({ body, headers, set }) => {
     const { text, input, voice = 'fr-female-1', lang = 'fr' } = body as { text?: string; input?: string; voice?: string; lang?: string };
     const textToSpeak = text || input || '';
 
@@ -195,7 +224,7 @@ const app = new Elysia()
       // 1. Essai direct /v1/voice/speak
       let ttsResponse = await fetch(`${AI_API_URL}/v1/voice/speak`, {
         method: 'POST',
-        headers: getProxyHeaders({ 'Content-Type': 'application/json' }),
+        headers: getProxyHeaders(headers, { 'Content-Type': 'application/json' }),
         body: JSON.stringify({ text: textToSpeak, voice, lang })
       });
 
@@ -213,7 +242,7 @@ const app = new Elysia()
         const mappedVoice = VOICE_MAPPING[voice]?.voice || 'asteria';
         ttsResponse = await fetch(`${AI_API_URL}/v1/audio/speech`, {
           method: 'POST',
-          headers: getProxyHeaders({ 'Content-Type': 'application/json' }),
+          headers: getProxyHeaders(headers, { 'Content-Type': 'application/json' }),
           body: JSON.stringify({
             input: textToSpeak,
             voice: mappedVoice,
@@ -244,11 +273,11 @@ const app = new Elysia()
   })
 
   // 4. Catalogue des voix disponibles
-  .get('/api/voice/voices', async ({ query, set }) => {
+  .get('/api/voice/voices', async ({ query, headers, set }) => {
     try {
       const langParam = query.lang ? `?lang=${encodeURIComponent(query.lang as string)}` : '';
       const response = await fetch(`${AI_API_URL}/v1/voice/voices${langParam}`, {
-        headers: getProxyHeaders()
+        headers: getProxyHeaders(headers)
       });
 
       if (!response.ok) {
@@ -265,11 +294,11 @@ const app = new Elysia()
   })
 
   // 5. Chat Completion (OpenAI format)
-  .post('/api/chat', async ({ body, set }) => {
+  .post('/api/chat', async ({ body, headers, set }) => {
     try {
       const response = await fetch(`${AI_API_URL}/v1/chat/completions`, {
         method: 'POST',
-        headers: getProxyHeaders({ 'Content-Type': 'application/json' }),
+        headers: getProxyHeaders(headers, { 'Content-Type': 'application/json' }),
         body: JSON.stringify(body)
       });
 

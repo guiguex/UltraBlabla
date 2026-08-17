@@ -16,15 +16,15 @@
     "android:release": "cd android && gradlew.bat assembleRelease"
   },
   "dependencies": {
-    "@capacitor-community/text-to-speech": "^6.1.0",
-    "@capacitor/core": "^6.2.1",
+    "@capacitor-community/text-to-speech": "^8.0.2",
+    "@capacitor/core": "^8.5.0",
     "@elysiajs/static": "^1.4.10",
     "elysia": "^1.4.29"
   },
   "devDependencies": {
-    "@capacitor/android": "^6.2.1",
-    "@capacitor/cli": "^6.2.1",
-    "typescript": "^5.9.3",
-    "bun-types": "latest"
+    "@capacitor/android": "^8.5.0",
+    "@capacitor/cli": "^8.5.0",
+    "typescript": "^7.0.2",
+    "bun-types": "^1.3.14"
   }
 }

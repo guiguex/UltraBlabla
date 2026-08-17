@@ -14,17 +14,16 @@
     "android:open": "bun x cap open android",
     "android:prepare": "powershell -ExecutionPolicy Bypass -File build-android.ps1",
     "android:release": "cd android && gradlew.bat assembleRelease"
-
   },
   "dependencies": {
-    "@capacitor-community/text-to-speech": "^6.0.0",
-    "@capacitor/core": "^6.1.2",
-    "@elysiajs/static": "^1.4.0",
-    "elysia": "^1.4.9"
+    "@capacitor-community/text-to-speech": "^6.1.0",
+    "@capacitor/core": "^6.2.1",
+    "@elysiajs/static": "^1.4.10",
+    "elysia": "^1.4.29"
   },
   "devDependencies": {
-    "@capacitor/android": "^6.1.2",
-    "@capacitor/cli": "^6.1.2",
+    "@capacitor/android": "^6.2.1",
+    "@capacitor/cli": "^6.2.1",
     "typescript": "^5.9.3",
     "bun-types": "latest"
   }

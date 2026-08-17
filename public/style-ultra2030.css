@@ -668,8 +668,8 @@ html, body {
 }
 
 .neural-record-btn {
-    width: 250px;
-    height: 250px;
+    width: 120px;
+    height: 120px;
     border: none;
     border-radius: 50%;
     position: relative;
@@ -708,18 +708,15 @@ html, body {
     top: 50%;
     left: 50%;
     transform: translate(-50%, -50%);
-    width: 120px;
-    height: 120px;
-    background: linear-gradient(135deg, #ff0080, #8000ff, #00ff80, #ff8000);
-    background-size: 400% 400%;
+    width: 60px;
+    height: 60px;
+    background: linear-gradient(135deg, var(--holo-primary), var(--quantum-purple));
     border-radius: 50%;
     display: flex;
     align-items: center;
     justify-content: center;
     z-index: 3;
-    box-shadow: 0 0 40px #ff0080, 0 0 80px #8000ff, inset 0 0 20px rgba(255,255,255,0.2);
-    animation: retro-80s-glow 3s ease-in-out infinite;
-    border: 3px solid #00ffff;
+    box-shadow: var(--neural-glow);
 }
 
 .mic-icon {
@@ -732,47 +729,33 @@ html, body {
 }
 
 .mic-core {
-    width: 32px;
-    height: 40px;
-    background: linear-gradient(145deg, #ff0080, #8000ff);
-    border-radius: 16px 16px 8px 8px;
+    width: 12px;
+    height: 16px;
+    background: var(--quantum-black);
+    border-radius: 6px 6px 6px 6px;
     position: relative;
-    box-shadow: 
-        inset 0 4px 8px rgba(255,0,128,0.6), 
-        0 0 20px #ff0080, 
-        0 0 40px #8000ff,
-        0 4px 8px rgba(0,0,0,0.8);
-    border: 2px solid #00ffff;
-    animation: mic-80s-pulse 2s ease-in-out infinite;
 }
 
 .mic-core::before {
     content: '';
     position: absolute;
-    bottom: -10px;
+    bottom: -4px;
     left: 50%;
     transform: translateX(-50%);
-    width: 48px;
-    height: 6px;
-    background: linear-gradient(90deg, #ff0080, #00ffff, #8000ff, #00ff80);
-    background-size: 200% 100%;
-    border-radius: 3px;
-    box-shadow: 0 0 15px rgba(0,255,255,1), 0 0 30px rgba(255,0,128,0.8);
-    animation: retro-bar-flow 2s ease-in-out infinite;
+    width: 20px;
+    height: 2px;
+    background: var(--quantum-black);
 }
 
 .mic-core::after {
     content: '';
     position: absolute;
-    bottom: -20px;
+    bottom: -8px;
     left: 50%;
     transform: translateX(-50%);
-    width: 8px;
-    height: 16px;
-    background: linear-gradient(180deg, #00ffff, #ff0080, #8000ff);
-    border-radius: 4px;
-    box-shadow: 0 0 12px rgba(255,0,128,1), 0 0 20px rgba(128,0,255,0.8);
-    animation: retro-stand-glow 1.5s ease-in-out infinite alternate;
+    width: 2px;
+    height: 6px;
+    background: var(--quantum-black);
 }
 
 .mic-waves {
@@ -1044,7 +1027,6 @@ html, body {
 .neural-record-btn.recording .mic-waves {
     opacity: 1;
 }
-.neural-record-btn.voice-active .mic-waves{opacity:.8;animation:voice-react .3s ease}
 
 @keyframes recording-pulse {
     0%, 100% { transform: scale(1); opacity: 0.9; }
@@ -1054,68 +1036,6 @@ html, body {
 @keyframes recording-core-glow {
     0%, 100% { box-shadow: 0 0 30px var(--neural-pink); }
     50% { box-shadow: 0 0 50px var(--quantum-purple); }
-}
-@keyframes voice-react{0%{transform:scale(1)}50%{transform:scale(1.15)}100%{transform:scale(1)}}
-
-/* ANNÉES 80 RETRO ANIMATIONS */
-@keyframes retro-80s-glow {
-    0% { 
-        background-position: 0% 50%;
-        box-shadow: 0 0 40px #ff0080, 0 0 80px #8000ff, inset 0 0 20px rgba(255,255,255,0.2);
-    }
-    25% { 
-        background-position: 50% 50%;
-        box-shadow: 0 0 50px #8000ff, 0 0 100px #00ff80, inset 0 0 30px rgba(255,255,255,0.3);
-    }
-    50% { 
-        background-position: 100% 50%;
-        box-shadow: 0 0 60px #00ff80, 0 0 120px #ff8000, inset 0 0 40px rgba(255,255,255,0.4);
-    }
-    75% { 
-        background-position: 50% 50%;
-        box-shadow: 0 0 50px #ff8000, 0 0 100px #ff0080, inset 0 0 30px rgba(255,255,255,0.3);
-    }
-    100% { 
-        background-position: 0% 50%;
-        box-shadow: 0 0 40px #ff0080, 0 0 80px #8000ff, inset 0 0 20px rgba(255,255,255,0.2);
-    }
-}
-
-@keyframes mic-80s-pulse {
-    0%, 100% { 
-        transform: scale(1);
-        box-shadow: inset 0 4px 8px rgba(255,0,128,0.6), 0 0 20px #ff0080, 0 0 40px #8000ff, 0 4px 8px rgba(0,0,0,0.8);
-    }
-    50% { 
-        transform: scale(1.1);
-        box-shadow: inset 0 6px 12px rgba(128,0,255,0.8), 0 0 30px #8000ff, 0 0 60px #00ff80, 0 6px 12px rgba(0,0,0,0.9);
-    }
-}
-
-@keyframes retro-bar-flow {
-    0% { 
-        background-position: 0% 50%;
-        box-shadow: 0 0 15px rgba(0,255,255,1), 0 0 30px rgba(255,0,128,0.8);
-    }
-    50% { 
-        background-position: 100% 50%;
-        box-shadow: 0 0 20px rgba(255,0,128,1), 0 0 40px rgba(0,255,128,0.9);
-    }
-    100% { 
-        background-position: 0% 50%;
-        box-shadow: 0 0 15px rgba(0,255,255,1), 0 0 30px rgba(255,0,128,0.8);
-    }
-}
-
-@keyframes retro-stand-glow {
-    0% { 
-        box-shadow: 0 0 12px rgba(255,0,128,1), 0 0 20px rgba(128,0,255,0.8);
-        transform: translateX(-50%) scale(1);
-    }
-    100% { 
-        box-shadow: 0 0 20px rgba(128,0,255,1), 0 0 35px rgba(0,255,128,0.9);
-        transform: translateX(-50%) scale(1.05);
-    }
 }
 
 /* ========================================
@@ -1414,153 +1334,4 @@ html, body {
     .message-text {
         border-width: 2px;
     }
-}
-
-/* ========================================
-   CONVERSATION ULTRA DYNAMIQUE STYLES
-======================================== */
-
-/* États de status pour conversation */
-.status.speaking {
-    background: linear-gradient(135deg, #ff9a56 0%, #ffad56 100%);
-    color: white;
-    animation: speaking-pulse 1s ease-in-out infinite;
-    box-shadow: 0 0 30px rgba(255, 154, 86, 0.6);
-}
-
-.status.listening {
-    background: linear-gradient(135deg, #56ccf2 0%, #2f80ed 100%);
-    color: white;
-    animation: listening-wave 2s ease-in-out infinite;
-    box-shadow: 0 0 30px rgba(86, 204, 242, 0.6);
-}
-
-.status.active {
-    background: linear-gradient(135deg, #a8edea 0%, #fed6e3 100%);
-    color: #2c3e50;
-    animation: active-glow 3s ease-in-out infinite;
-    box-shadow: 0 0 40px rgba(168, 237, 234, 0.8);
-}
-
-.status.paused {
-    background: linear-gradient(135deg, #bdc3c7 0%, #95a5a6 100%);
-    color: white;
-    opacity: 0.8;
-}
-
-.status.processing {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    color: white;
-    animation: processing-spin 2s linear infinite;
-    box-shadow: 0 0 30px rgba(102, 126, 234, 0.6);
-}
-
-.status.recording {
-    background: linear-gradient(135deg, #ff6b6b 0%, #ee5a24 100%);
-    color: white;
-    animation: recording-pulse 1.5s ease-in-out infinite;
-    box-shadow: 0 0 30px rgba(255, 107, 107, 0.6);
-}
-
-.status.loading {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    color: white;
-    animation: loading-dots 1.5s ease-in-out infinite;
-}
-
-.status.online {
-    background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
-    color: white;
-}
-
-.status.error {
-    background: linear-gradient(135deg, #ff6b6b 0%, #ee5a24 100%);
-    color: white;
-}
-
-.status.warning {
-    background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
-    color: white;
-}
-
-/* Button states pour conversation */
-.holo-btn.conversation {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    animation: conversation-active 2s ease-in-out infinite;
-    box-shadow: 0 0 40px rgba(102, 126, 234, 0.6);
-}
-
-/* Animations ultra dynamiques */
-@keyframes conversation-active {
-    0%, 100% { 
-        transform: scale(1); 
-        box-shadow: 0 0 40px rgba(102, 126, 234, 0.6); 
-    }
-    50% { 
-        transform: scale(1.02); 
-        box-shadow: 0 0 60px rgba(118, 75, 162, 0.8); 
-    }
-}
-
-@keyframes speaking-pulse {
-    0%, 100% { 
-        transform: scale(1); 
-        box-shadow: 0 0 30px rgba(255, 154, 86, 0.6); 
-    }
-    50% { 
-        transform: scale(1.05); 
-        box-shadow: 0 0 50px rgba(255, 154, 86, 0.9); 
-    }
-}
-
-@keyframes listening-wave {
-    0%, 100% { 
-        transform: scale(1) rotate(0deg); 
-        box-shadow: 0 0 30px rgba(86, 204, 242, 0.6); 
-    }
-    25% { 
-        transform: scale(1.02) rotate(1deg); 
-        box-shadow: 0 0 35px rgba(86, 204, 242, 0.7); 
-    }
-    75% { 
-        transform: scale(1.02) rotate(-1deg); 
-        box-shadow: 0 0 35px rgba(86, 204, 242, 0.7); 
-    }
-}
-
-@keyframes active-glow {
-    0%, 100% { 
-        transform: scale(1); 
-        box-shadow: 0 0 40px rgba(168, 237, 234, 0.8); 
-    }
-    33% { 
-        transform: scale(1.02); 
-        box-shadow: 0 0 50px rgba(254, 214, 227, 0.8); 
-    }
-    66% { 
-        transform: scale(1.01); 
-        box-shadow: 0 0 45px rgba(168, 237, 234, 0.9); 
-    }
-}
-
-@keyframes processing-spin {
-    0% { transform: rotate(0deg); }
-    100% { transform: rotate(360deg); }
-}
-
-@keyframes recording-pulse {
-    0%, 100% { 
-        opacity: 1; 
-        transform: scale(1); 
-    }
-    50% { 
-        opacity: 0.7; 
-        transform: scale(1.03); 
-    }
-}
-
-@keyframes loading-dots {
-    0%, 20% { content: '.'; }
-    40% { content: '..'; }
-    60%, 100% { content: '...'; }
 }

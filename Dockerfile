@@ -1,19 +1,16 @@
-FROM oven/bun:latest AS builder
+# Étape 1 : Build
+FROM oven/bun:1.1-alpine AS builder
 WORKDIR /app
-COPY package.json bun.lock tsconfig.json ./
-RUN bun install --frozen-lockfile
+COPY package.json bun.lockb* ./
+RUN bun install --frozen-lockfile || bun install
 COPY . .
 RUN bun run build
 
-FROM oven/bun:latest AS runner
+# Étape 2 : Production
+FROM oven/bun:1.1-alpine
 WORKDIR /app
-COPY --from=builder /app/package.json ./
-COPY --from=builder /app/node_modules ./node_modules
-COPY --from=builder /app/public ./public
-COPY --from=builder /app/src ./src
-
-ENV PORT=8080
+COPY --from=builder /app /app
 ENV NODE_ENV=production
-
-EXPOSE 8080
+ENV PORT=3000
+EXPOSE 3000
 CMD ["bun", "run", "src/server.ts"]

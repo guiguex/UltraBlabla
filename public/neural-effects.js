@@ -103,28 +103,21 @@ class NeuralCanvas {
             particle.vx *= 0.99;
             particle.vy *= 0.99;
             
-            // Pulse animation avec validation
-            particle.pulsePhase = (particle.pulsePhase || 0) + 0.05;
-            particle.currentSize = Math.max(0.1, particle.size + Math.sin(particle.pulsePhase) * 0.5);
-            particle.currentOpacity = Math.max(0, Math.min(1, particle.opacity + Math.sin(particle.pulsePhase * 0.7) * 0.2));
+            // Pulse animation
+            particle.pulsePhase += 0.05;
+            particle.currentSize = particle.size + Math.sin(particle.pulsePhase) * 0.5;
+            particle.currentOpacity = particle.opacity + Math.sin(particle.pulsePhase * 0.7) * 0.2;
         });
     }
     
     drawParticles() {
         this.particles.forEach(particle => {
-            // Validation des valeurs pour éviter les erreurs non-finite
-            if (!isFinite(particle.x) || !isFinite(particle.y) || 
-                !isFinite(particle.currentSize) || particle.currentSize <= 0) {
-                return; // Skip cette particule si les valeurs sont invalides
-            }
-            
             this.ctx.save();
             
-            // Particle glow avec validation
-            const radius = Math.max(1, particle.currentSize * 8);
+            // Particle glow
             const gradient = this.ctx.createRadialGradient(
                 particle.x, particle.y, 0,
-                particle.x, particle.y, radius
+                particle.x, particle.y, particle.currentSize * 8
             );
             gradient.addColorStop(0, particle.color + particle.currentOpacity + ')');
             gradient.addColorStop(0.4, particle.color + (particle.currentOpacity * 0.4) + ')');

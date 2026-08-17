@@ -2,353 +2,162 @@
 <html lang="fr">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>UltraBlabla • Live Voice</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>UltraBlabla • AI Voice Neural Interface</title>
     <link rel="icon" type="image/png" href="icons/icon-32.png">
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="ultra-effects.css">
     <link rel="manifest" href="manifest.webmanifest">
-    <meta name="theme-color" content="#030712">
+    <meta name="theme-color" content="#0a0a0a">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-    <style>
-        :root {
-            --bg-base: #030712;
-            --orb-cyan: #06b6d4;
-            --orb-purple: #8b5cf6;
-            --orb-pink: #ec4899;
-            --orb-blue: #3b82f6;
-            --text-primary: #f8fafc;
-            --text-muted: #94a3b8;
-            --font: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
-        }
-
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-            -webkit-tap-highlight-color: transparent;
-            user-select: none;
-        }
-
-        html, body {
-            width: 100%;
-            height: 100%;
-            overflow: hidden;
-            background: var(--bg-base);
-            font-family: var(--font);
-            color: var(--text-primary);
-        }
-
-        /* Ambient Glow Background */
-        .ambient-bg {
-            position: fixed;
-            inset: 0;
-            z-index: 0;
-            background: 
-                radial-gradient(circle at 50% 40%, rgba(139, 92, 246, 0.15) 0%, transparent 60%),
-                radial-gradient(circle at 20% 80%, rgba(6, 182, 212, 0.12) 0%, transparent 50%),
-                radial-gradient(circle at 80% 80%, rgba(236, 72, 153, 0.12) 0%, transparent 50%),
-                #030712;
-            transition: all 0.8s ease;
-        }
-
-        .ambient-bg.speaking {
-            background: 
-                radial-gradient(circle at 50% 40%, rgba(236, 72, 153, 0.25) 0%, transparent 60%),
-                radial-gradient(circle at 80% 30%, rgba(139, 92, 246, 0.2) 0%, transparent 50%),
-                #030712;
-        }
-
-        .ambient-bg.listening {
-            background: 
-                radial-gradient(circle at 50% 40%, rgba(6, 182, 212, 0.25) 0%, transparent 60%),
-                radial-gradient(circle at 30% 70%, rgba(59, 130, 246, 0.2) 0%, transparent 50%),
-                #030712;
-        }
-
-        /* Fullscreen Layout */
-        .live-container {
-            position: relative;
-            z-index: 1;
-            width: 100vw;
-            height: 100vh;
-            height: 100dvh;
-            display: flex;
-            flex-direction: column;
-            justify-content: space-between;
-            align-items: center;
-            padding: calc(env(safe-area-inset-top) + 1.5rem) 1.5rem calc(env(safe-area-inset-bottom) + 2rem);
-        }
-
-        /* Minimal Header */
-        .live-header {
-            width: 100%;
-            max-width: 500px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-
-        .brand-pill {
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-            background: rgba(255, 255, 255, 0.05);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            padding: 0.4rem 0.9rem;
-            border-radius: 100px;
-            backdrop-filter: blur(20px);
-        }
-
-        .brand-dot {
-            width: 8px;
-            height: 8px;
-            border-radius: 50%;
-            background: var(--orb-cyan);
-            box-shadow: 0 0 10px var(--orb-cyan);
-            transition: all 0.3s ease;
-        }
-
-        .brand-dot.speaking {
-            background: var(--orb-pink);
-            box-shadow: 0 0 12px var(--orb-pink);
-        }
-
-        .brand-dot.processing {
-            background: var(--orb-purple);
-            box-shadow: 0 0 12px var(--orb-purple);
-            animation: pulse-dot 1s infinite alternate;
-        }
-
-        .brand-name {
-            font-size: 0.85rem;
-            font-weight: 700;
-            letter-spacing: 0.5px;
-            color: #f1f5f9;
-        }
-
-        .btn-icon {
-            background: rgba(255, 255, 255, 0.05);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            color: var(--text-muted);
-            width: 38px;
-            height: 38px;
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            cursor: pointer;
-            transition: all 0.2s ease;
-        }
-
-        .btn-icon:hover {
-            color: #ffffff;
-            background: rgba(255, 255, 255, 0.1);
-        }
-
-        /* Central Voice Stage / Live Orb */
-        .stage-center {
-            position: relative;
-            width: 100%;
-            max-width: 420px;
-            height: 360px;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            cursor: pointer;
-        }
-
-        #orb-canvas {
-            position: absolute;
-            width: 100%;
-            height: 100%;
-            pointer-events: none;
-        }
-
-        .orb-touch-target {
-            position: relative;
-            z-index: 2;
-            width: 160px;
-            height: 160px;
-            border-radius: 50%;
-            background: radial-gradient(circle at 35% 35%, rgba(255,255,255,0.2) 0%, rgba(255,255,255,0.02) 60%, transparent 100%);
-            border: 1px solid rgba(255, 255, 255, 0.15);
-            backdrop-filter: blur(8px);
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-            align-items: center;
-            transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
-            box-shadow: 0 0 50px rgba(6, 182, 212, 0.2);
-        }
-
-        .orb-touch-target:hover {
-            transform: scale(1.04);
-        }
-
-        .orb-touch-target:active {
-            transform: scale(0.96);
-        }
-
-        .orb-icon {
-            font-size: 2.2rem;
-            transition: all 0.3s ease;
-            filter: drop-shadow(0 2px 8px rgba(0,0,0,0.4));
-        }
-
-        .orb-label {
-            margin-top: 0.5rem;
-            font-size: 0.72rem;
-            font-weight: 700;
-            letter-spacing: 1px;
-            text-transform: uppercase;
-            color: #cbd5e1;
-            opacity: 0.9;
-        }
-
-        /* Dynamic Live Subtitles / Caption Pill */
-        .caption-container {
-            width: 100%;
-            max-width: 520px;
-            min-height: 100px;
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-            align-items: center;
-            text-align: center;
-            padding: 1.25rem 1.5rem;
-            background: rgba(15, 23, 42, 0.5);
-            border: 1px solid rgba(255, 255, 255, 0.08);
-            border-radius: 24px;
-            backdrop-filter: blur(24px);
-            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.4);
-            transition: all 0.3s ease;
-        }
-
-        .caption-speaker {
-            font-size: 0.7rem;
-            font-weight: 700;
-            letter-spacing: 1.5px;
-            text-transform: uppercase;
-            color: var(--orb-cyan);
-            margin-bottom: 0.4rem;
-            transition: color 0.3s ease;
-        }
-
-        .caption-speaker.assistant {
-            color: var(--orb-pink);
-        }
-
-        .caption-text {
-            font-size: 1.15rem;
-            font-weight: 500;
-            line-height: 1.45;
-            color: #f8fafc;
-            transition: all 0.25s ease;
-            word-break: break-word;
-        }
-
-        .caption-text.placeholder {
-            font-size: 0.95rem;
-            color: var(--text-muted);
-            font-weight: 400;
-        }
-
-        /* Bottom Controls Bar */
-        .bottom-controls {
-            width: 100%;
-            max-width: 420px;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            gap: 1.25rem;
-        }
-
-        .btn-live-toggle {
-            flex: 1;
-            max-width: 260px;
-            height: 56px;
-            border-radius: 100px;
-            border: 1px solid rgba(255, 255, 255, 0.15);
-            background: linear-gradient(135deg, rgba(6, 182, 212, 0.2) 0%, rgba(139, 92, 246, 0.2) 100%);
-            color: #ffffff;
-            font-family: var(--font);
-            font-size: 0.95rem;
-            font-weight: 700;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 0.6rem;
-            cursor: pointer;
-            backdrop-filter: blur(16px);
-            box-shadow: 0 8px 30px rgba(6, 182, 212, 0.25);
-            transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-        }
-
-        .btn-live-toggle:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 12px 35px rgba(6, 182, 212, 0.4);
-            border-color: rgba(6, 182, 212, 0.5);
-        }
-
-        .btn-live-toggle:active {
-            transform: translateY(1px);
-        }
-
-        .btn-live-toggle.active {
-            background: linear-gradient(135deg, rgba(236, 72, 153, 0.3) 0%, rgba(139, 92, 246, 0.3) 100%);
-            border-color: rgba(236, 72, 153, 0.6);
-            box-shadow: 0 8px 30px rgba(236, 72, 153, 0.35);
-        }
-
-        @keyframes pulse-dot {
-            from { opacity: 0.4; transform: scale(0.8); }
-            to { opacity: 1; transform: scale(1.2); }
-        }
-    </style>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@100;200;300;400;500;600;700;800;900&family=JetBrains+Mono:wght@100;200;300;400;500;600;700;800&display=swap" rel="stylesheet">
 </head>
 <body>
-    <div class="ambient-bg" id="ambientBg"></div>
+    <!-- Neural Background -->
+    <div class="neural-bg">
+        <div class="neural-grid"></div>
+        <div class="quantum-particles"></div>
+        <canvas id="neural-canvas"></canvas>
+    </div>
 
-    <div class="live-container">
-        <!-- Minimal Top Bar -->
-        <header class="live-header">
-            <div class="brand-pill">
-                <div class="brand-dot" id="statusDot"></div>
-                <span class="brand-name">ULTRABLABLA LIVE</span>
+    <!-- Holographic UI Container -->
+    <div id="app" class="holo-container">
+        <!-- Quantum Header -->
+        <header class="quantum-header">
+            <div class="logo-neural">
+                <div class="neural-pulse"></div>
+                <h1 class="holo-title">
+                    <span class="neural-text">ULTRA</span>
+                    <span class="quantum-glow">BLABLA</span>
+                </h1>
+                <div class="ai-badge">
+                    <span class="badge-text">AI CLOUD EDGE v5.0</span>
+                    <div class="badge-pulse"></div>
+                </div>
             </div>
-            <button class="btn-icon" id="clearBtn" title="Effacer l'historique" aria-label="Effacer">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <polyline points="3 6 5 6 21 6"></polyline>
-                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
-                </svg>
-            </button>
+            <div class="status-matrix" id="status">
+                <div class="matrix-dots"></div>
+                <span class="status-text">CLOUD LINK INITIALIZING...</span>
+                <div class="status-waves"></div>
+            </div>
         </header>
 
-        <!-- Dynamic Holographic Live Orb -->
-        <div class="stage-center" id="orbStage">
-            <canvas id="orb-canvas"></canvas>
-            <div class="orb-touch-target" id="orbBtn">
-                <span class="orb-icon" id="orbIcon">🎙️</span>
-                <span class="orb-label" id="orbLabel">TAP TO TALK</span>
+        <!-- Holographic Chat Interface -->
+        <main class="quantum-main">
+            <!-- Neural Messages Stream -->
+            <div id="messages" class="neural-stream">
+                <div class="welcome-matrix">
+                    <div class="holo-card neural-welcome holo-border neural-scan">
+                        <div class="card-glow"></div>
+                        <div class="quantum-field"></div>
+                        <div class="quantum-interference"></div>
+                        <div class="neural-header">
+                            <h2 class="matrix-title holo-text">NEURAL VOICE INTERFACE</h2>
+                            <div class="quantum-line"></div>
+                        </div>
+                        <p class="holo-subtitle">Advanced Cloud AI • Quantum Processing</p>
+                        
+                        <div class="tech-specs">
+                            <div class="spec-item vosk">
+                                <div class="spec-icon">
+                                    <div class="icon-core"></div>
+                                    <div class="icon-rings"></div>
+                                </div>
+                                <div class="spec-details">
+                                    <span class="spec-name">CLOUDFLARE AI EDGE</span>
+                                    <span class="spec-desc">Global Latency Audio Processing</span>
+                                </div>
+                                <div class="spec-status active"></div>
+                            </div>
+                            <div class="spec-item qwen">
+                                <div class="spec-icon">
+                                    <div class="icon-core"></div>
+                                    <div class="icon-rings"></div>
+                                </div>
+                                <div class="spec-details">
+                                    <span class="spec-name">Llama-3.1-8b-Instruct</span>
+                                    <span class="spec-desc">Quantum Language Matrix</span>
+                                </div>
+                                <div class="spec-status active"></div>
+                            </div>
+                            <div class="spec-item tts">
+                                <div class="spec-icon">
+                                    <div class="icon-core"></div>
+                                    <div class="icon-rings"></div>
+                                </div>
+                                <div class="spec-details">
+                                    <span class="spec-name">DEEPGRAM AURA TTS</span>
+                                    <span class="spec-desc">Holographic Voice Synthesis</span>
+                                </div>
+                                <div class="spec-status active"></div>
+                            </div>
+                        </div>
+                        
+                        <div class="quantum-prompt">
+                            <div class="prompt-glow"></div>
+                            <span>ACTIVATE NEURAL INTERFACE TO BEGIN</span>
+                        </div>
+                    </div>
+                </div>
             </div>
-        </div>
 
-        <!-- Live Subtitles & Dynamic Speech Pill -->
-        <div class="caption-container" id="captionBox">
-            <span class="caption-speaker" id="captionSpeaker">LIVE ASSISTANT</span>
-            <p class="caption-text placeholder" id="captionText">Touchez l'orbe ou le bouton pour démarrer la discussion vocale en direct.</p>
-        </div>
+            <!-- Quantum Voice Controls -->
+            <div class="quantum-controls holo-reflection">
+                <div class="neural-connections"></div>
+                <div class="control-matrix">
+                    <button id="recordBtn" class="neural-record-btn">
+                        <div class="btn-quantum-bg"></div>
+                        <div class="btn-neural-core">
+                            <div class="mic-icon">
+                                <div class="mic-core"></div>
+                                <div class="mic-waves"></div>
+                            </div>
+                        </div>
+                        <div class="btn-holo-ring"></div>
+                        <div class="btn-text">
+                            <span class="btn-label">CLOUD VOICE</span>
+                            <span class="btn-sublabel">Tap to Activate</span>
+                        </div>
+                        <div class="btn-particles"></div>
+                    </button>
+                    
+                    <button id="clearBtn" class="quantum-clear-btn">
+                        <div class="clear-neural-bg"></div>
+                        <div class="clear-icon">
+                            <div class="clear-core"></div>
+                            <div class="clear-lines"></div>
+                        </div>
+                        <div class="clear-glow"></div>
+                    </button>
+                </div>
+                
+                <!-- Neural Activity Monitor -->
+                <div class="neural-monitor">
+                    <div class="monitor-bars">
+                        <div class="bar" style="--delay: 0s"></div>
+                        <div class="bar" style="--delay: 0.1s"></div>
+                        <div class="bar" style="--delay: 0.2s"></div>
+                        <div class="bar" style="--delay: 0.3s"></div>
+                        <div class="bar" style="--delay: 0.4s"></div>
+                    </div>
+                    <span class="monitor-label">CLOUD PROCESSING</span>
+                </div>
+            </div>
+        </main>
 
-        <!-- Bottom Single-Action Bar -->
-        <footer class="bottom-controls">
-            <button class="btn-live-toggle" id="mainToggleBtn">
-                <span id="btnIcon">⚡</span>
-                <span id="btnText">DÉMARRER LA DISCUSSION</span>
-            </button>
+        <!-- Holographic Footer -->
+        <footer class="quantum-footer">
+            <div class="footer-neural-line"></div>
+            <div class="footer-info">
+                <span class="build-info">BUILD 2030.10.08 • QUANTUM NEURAL ENGINE</span>
+                <div class="ai-heartbeat"></div>
+            </div>
         </footer>
     </div>
 
+    <!-- Scripts -->
+    <script src="neural-effects.js"></script>
     <script type="module" src="webapp.js"></script>
 </body>
 </html>

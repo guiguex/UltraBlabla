@@ -1,6 +1,6 @@
 /**
- * UltraBlabla Live Voice Engine (Gemini Live Style)
- * 1-Click Zero Friction • Fluid Adaptive VAD • Dynamic 60 FPS Morphing Orb
+ * UltraBlabla Live Voice Engine (Cloudflare Edge Style)
+ * 1-Click Zero Friction • Fluid Adaptive VAD • Adapted for Next Gen Design
  */
 
 type LiveState = 'idle' | 'listening' | 'thinking' | 'speaking';
@@ -23,20 +23,11 @@ class UltraBlablaLiveApp {
     private speechStartTime: number = 0;
     private isVADActive: boolean = false;
 
-    // DOM Elements
-    private ambientBg!: HTMLElement;
-    private statusDot!: HTMLElement;
-    private orbBtn!: HTMLElement;
-    private orbIcon!: HTMLElement;
-    private orbLabel!: HTMLElement;
-    private captionSpeaker!: HTMLElement;
-    private captionText!: HTMLElement;
-    private mainToggleBtn!: HTMLButtonElement;
-    private btnIcon!: HTMLElement;
-    private btnText!: HTMLElement;
+    // DOM Elements (Next Gen Design)
+    private recordBtn!: HTMLButtonElement;
+    private messages!: HTMLElement;
+    private status!: HTMLElement;
     private clearBtn!: HTMLButtonElement;
-    private canvas!: HTMLCanvasElement;
-    private canvasCtx!: CanvasRenderingContext2D | null;
 
     constructor() {
         if (typeof window !== 'undefined') {
@@ -47,44 +38,32 @@ class UltraBlablaLiveApp {
     private init() {
         this.bindElements();
         this.setupListeners();
-        this.initOrbVisualizer();
         this.updateUI('idle');
     }
 
     private bindElements() {
-        this.ambientBg = document.getElementById('ambientBg') as HTMLElement;
-        this.statusDot = document.getElementById('statusDot') as HTMLElement;
-        this.orbBtn = document.getElementById('orbBtn') as HTMLElement;
-        this.orbIcon = document.getElementById('orbIcon') as HTMLElement;
-        this.orbLabel = document.getElementById('orbLabel') as HTMLElement;
-        this.captionSpeaker = document.getElementById('captionSpeaker') as HTMLElement;
-        this.captionText = document.getElementById('captionText') as HTMLElement;
-        this.mainToggleBtn = document.getElementById('mainToggleBtn') as HTMLButtonElement;
-        this.btnIcon = document.getElementById('btnIcon') as HTMLElement;
-        this.btnText = document.getElementById('btnText') as HTMLElement;
+        this.recordBtn = document.getElementById('recordBtn') as HTMLButtonElement;
+        this.messages = document.getElementById('messages') as HTMLElement;
+        this.status = document.querySelector('#status .status-text') as HTMLElement;
         this.clearBtn = document.getElementById('clearBtn') as HTMLButtonElement;
-        this.canvas = document.getElementById('orb-canvas') as HTMLCanvasElement;
-        if (this.canvas) {
-            this.canvasCtx = this.canvas.getContext('2d');
-        }
     }
 
     private setupListeners() {
-        // Toggle on Orb or Main Button
-        this.orbBtn?.addEventListener('click', () => this.toggleLiveSession());
-        this.mainToggleBtn?.addEventListener('click', () => this.toggleLiveSession());
+        // Toggle on Main Button
+        this.recordBtn?.addEventListener('click', () => this.toggleLiveSession());
 
         // Clear History
         this.clearBtn?.addEventListener('click', () => {
             this.stopSpeaking();
-            this.showCaption('SYSTEM', 'Historique nettoyé. Prêt à discuter.', true);
+            this.clearMessages();
+            this.addMessage('SYSTEM', 'Historique nettoyé. Prêt à discuter.', 'system');
             this.playChime(400, 0.08);
             if (this.state !== 'idle') this.stopLiveSession();
         });
 
         // Space shortcut
         document.addEventListener('keydown', (e) => {
-            if (e.code === 'Space' && (e.target === document.body || e.target === this.orbBtn || e.target === this.mainToggleBtn)) {
+            if (e.code === 'Space' && (e.target === document.body || e.target === this.recordBtn)) {
                 e.preventDefault();
                 this.toggleLiveSession();
             }
@@ -170,7 +149,7 @@ class UltraBlablaLiveApp {
         } catch (err: any) {
             console.error('Mic Error:', err);
             this.updateUI('idle');
-            this.showCaption('SYSTEM', `Microphone inaccessible : ${err?.message || err}`, true);
+            this.addMessage('SYSTEM', `Microphone inaccessible : ${err?.message || err}`, 'system');
         }
     }
 
@@ -210,7 +189,7 @@ class UltraBlablaLiveApp {
                     if (!this.isSpeakingVoice) {
                         this.isSpeakingVoice = true;
                         this.speechStartTime = Date.now();
-                        this.showCaption('VOUS', 'Écoute en cours...', false);
+                        if (this.status) this.status.textContent = '👂 Écoute en cours...';
                     }
                     if (this.silenceTimer) {
                         window.clearTimeout(this.silenceTimer);
@@ -308,11 +287,11 @@ class UltraBlablaLiveApp {
             const data = await response.json();
 
             if (data.transcript) {
-                this.showCaption('VOUS', data.transcript, false);
+                this.addMessage('VOUS', data.transcript, 'user');
             }
 
             if (data.response) {
-                this.showCaption('ULTRABLABLA', data.response, false);
+                this.addMessage('ULTRABLABLA', data.response, 'ai');
             }
 
             if (data.audio_b64) {
@@ -328,7 +307,7 @@ class UltraBlablaLiveApp {
 
         } catch (err: any) {
             console.error('Pipeline error:', err);
-            this.showCaption('SYSTEM', 'Connexion en cours de rétablissement...', true);
+            this.addMessage('SYSTEM', 'Connexion en cours de rétablissement...', 'system');
             setTimeout(() => this.startListening(), 1000);
         }
     }
@@ -349,7 +328,7 @@ class UltraBlablaLiveApp {
             return;
         }
 
-        this.showCaption('VOUS', text, false);
+        this.addMessage('VOUS', text, 'user');
 
         const chatUrl = isLocal ? '/api/chat' : 'https://api.guig.dev/v1/chat/completions';
         const chatRes = await fetch(chatUrl, {
@@ -368,7 +347,7 @@ class UltraBlablaLiveApp {
 
         const chatData = await chatRes.json();
         const reply = chatData.choices?.[0]?.message?.content || chatData.response || '';
-        this.showCaption('ULTRABLABLA', reply, false);
+        this.addMessage('ULTRABLABLA', reply, 'ai');
         await this.speakText(reply);
     }
 
@@ -461,51 +440,69 @@ class UltraBlablaLiveApp {
         setTimeout(() => this.startListening(), 200);
     }
 
-    private showCaption(speaker: string, text: string, isPlaceholder: boolean) {
-        if (!this.captionSpeaker || !this.captionText) return;
-        this.captionSpeaker.textContent = speaker;
-        this.captionSpeaker.className = `caption-speaker ${speaker.toLowerCase()}`;
-        this.captionText.textContent = text;
-        this.captionText.className = `caption-text ${isPlaceholder ? 'placeholder' : ''}`;
+    private addMessage(speaker: string, text: string, type: 'user' | 'ai' | 'system') {
+        if (!this.messages) return;
+        const welcome = this.messages.querySelector('.welcome-matrix');
+        if (welcome) welcome.remove();
+
+        const messageEl = document.createElement('div');
+        messageEl.className = `message ${type}-message`;
+        
+        // Inline styling to match Next Gen aesthetics for dynamic messages
+        messageEl.style.padding = '12px 16px';
+        messageEl.style.margin = '10px 0';
+        messageEl.style.borderRadius = '12px';
+        messageEl.style.fontSize = '15px';
+        messageEl.style.lineHeight = '1.5';
+        messageEl.style.background = type === 'user' ? 'rgba(6, 182, 212, 0.08)' : (type === 'ai' ? 'rgba(139, 92, 246, 0.08)' : 'rgba(255, 255, 255, 0.05)');
+        messageEl.style.border = `1px solid ${type === 'user' ? 'rgba(6, 182, 212, 0.2)' : (type === 'ai' ? 'rgba(139, 92, 246, 0.2)' : 'rgba(255, 255, 255, 0.1)')}`;
+        messageEl.style.color = type === 'user' ? '#fff' : (type === 'ai' ? '#e9d5ff' : '#a1a1aa');
+        messageEl.style.boxShadow = `0 4px 15px ${type === 'user' ? 'rgba(6, 182, 212, 0.05)' : (type === 'ai' ? 'rgba(139, 92, 246, 0.05)' : 'none')}`;
+        
+        messageEl.innerHTML = `<strong style="color: ${type === 'user' ? '#06b6d4' : (type === 'ai' ? '#c084fc' : '#a1a1aa')}; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; display: block; margin-bottom: 6px;">${speaker}</strong> ${text}`;
+        
+        this.messages.appendChild(messageEl);
+        this.messages.scrollTop = this.messages.scrollHeight;
+    }
+
+    private clearMessages() {
+        if (!this.messages) return;
+        this.messages.innerHTML = `<div class="welcome-matrix"><div class="holo-card neural-welcome holo-border neural-scan"><div class="card-glow"></div><div class="quantum-field"></div><div class="quantum-interference"></div><div class="neural-header"><h2 class="matrix-title holo-text">NEURAL VOICE INTERFACE</h2><div class="quantum-line"></div></div><p class="holo-subtitle">Advanced Cloud AI • Quantum Processing</p><div class="tech-specs"><div class="spec-item vosk"><div class="spec-icon"><div class="icon-core"></div><div class="icon-rings"></div></div><div class="spec-details"><span class="spec-name">CLOUDFLARE AI EDGE</span><span class="spec-desc">Global Latency Audio Processing</span></div><div class="spec-status active"></div></div><div class="spec-item qwen"><div class="spec-icon"><div class="icon-core"></div><div class="icon-rings"></div></div><div class="spec-details"><span class="spec-name">Llama-3.1-8b-Instruct</span><span class="spec-desc">Quantum Language Matrix</span></div><div class="spec-status active"></div></div><div class="spec-item tts"><div class="spec-icon"><div class="icon-core"></div><div class="icon-rings"></div></div><div class="spec-details"><span class="spec-name">DEEPGRAM AURA TTS</span><span class="spec-desc">Holographic Voice Synthesis</span></div><div class="spec-status active"></div></div></div><div class="quantum-prompt"><div class="prompt-glow"></div><span>ACTIVATE NEURAL INTERFACE TO BEGIN</span></div></div></div>`;
     }
 
     private updateUI(newState: LiveState) {
         this.state = newState;
-        this.ambientBg?.classList.remove('listening', 'speaking');
-        this.statusDot?.classList.remove('speaking', 'processing');
 
-        if (this.mainToggleBtn) {
-            this.mainToggleBtn.classList.toggle('active', newState !== 'idle');
-        }
+        const btnLabel = this.recordBtn?.querySelector('.btn-label');
+        const btnSublabel = this.recordBtn?.querySelector('.btn-sublabel');
 
         switch (newState) {
             case 'idle':
-                if (this.orbIcon) this.orbIcon.textContent = '🎙️';
-                if (this.orbLabel) this.orbLabel.textContent = 'TOUCHER POUR PARLER';
-                if (this.btnIcon) this.btnIcon.textContent = '⚡';
-                if (this.btnText) this.btnText.textContent = 'DÉMARRER LA DISCUSSION';
+                if (this.status) this.status.textContent = 'PRÊT • 100% CLOUD AI';
+                if (btnLabel) btnLabel.textContent = 'CLOUD VOICE';
+                if (btnSublabel) btnSublabel.textContent = 'Tap to Activate';
+                this.recordBtn?.classList.remove('voice-active', 'processing', 'speaking');
                 break;
             case 'listening':
-                this.ambientBg?.classList.add('listening');
-                if (this.orbIcon) this.orbIcon.textContent = '🎧';
-                if (this.orbLabel) this.orbLabel.textContent = 'À VOUS LA PAROLE';
-                if (this.btnIcon) this.btnIcon.textContent = '⏹️';
-                if (this.btnText) this.btnText.textContent = 'ARRÊTER';
+                if (this.status) this.status.textContent = '👂 À l\'écoute... (parlez naturellement)';
+                if (btnLabel) btnLabel.textContent = 'LISTENING';
+                if (btnSublabel) btnSublabel.textContent = 'Tap to Stop';
+                this.recordBtn?.classList.add('voice-active');
+                this.recordBtn?.classList.remove('processing', 'speaking');
                 break;
             case 'thinking':
-                this.statusDot?.classList.add('processing');
-                if (this.orbIcon) this.orbIcon.textContent = '✨';
-                if (this.orbLabel) this.orbLabel.textContent = 'RÉFLEXION...';
-                if (this.btnIcon) this.btnIcon.textContent = '⏹️';
-                if (this.btnText) this.btnText.textContent = 'ARRÊTER';
+                if (this.status) this.status.textContent = '🧠 Traitement...';
+                if (btnLabel) btnLabel.textContent = 'THINKING';
+                if (btnSublabel) btnSublabel.textContent = 'Processing...';
+                this.recordBtn?.classList.add('processing');
+                this.recordBtn?.classList.remove('voice-active', 'speaking');
                 break;
             case 'speaking':
-                this.ambientBg?.classList.add('speaking');
-                this.statusDot?.classList.add('speaking');
-                if (this.orbIcon) this.orbIcon.textContent = '🔊';
-                if (this.orbLabel) this.orbLabel.textContent = 'IA PARLE (INTERROMPRE)';
-                if (this.btnIcon) this.btnIcon.textContent = '⏹️';
-                if (this.btnText) this.btnText.textContent = 'ARRÊTER';
+                if (this.status) this.status.textContent = '🎙️ IA parle... (touchez pour interrompre)';
+                if (btnLabel) btnLabel.textContent = 'SPEAKING';
+                if (btnSublabel) btnSublabel.textContent = 'Tap to Stop';
+                this.recordBtn?.classList.add('speaking');
+                this.recordBtn?.classList.remove('voice-active', 'processing');
                 break;
         }
     }
@@ -524,83 +521,6 @@ class UltraBlablaLiveApp {
             osc.start();
             osc.stop(this.audioCtx.currentTime + duration);
         } catch { /* ignore */ }
-    }
-
-    /**
-     * 60 FPS Morphing Quantum Live Orb
-     */
-    private initOrbVisualizer() {
-        if (!this.canvas || !this.canvasCtx) return;
-
-        const resize = () => {
-            const rect = this.canvas.parentElement?.getBoundingClientRect();
-            if (rect) {
-                this.canvas.width = rect.width;
-                this.canvas.height = rect.height;
-            }
-        };
-        resize();
-        window.addEventListener('resize', resize);
-
-        const freqData = new Uint8Array(128);
-        let phase = 0;
-
-        const render = () => {
-            if (!this.canvasCtx) return;
-            this.canvasCtx.clearRect(0, 0, this.canvas.width, this.canvas.height);
-
-            const cx = this.canvas.width / 2;
-            const cy = this.canvas.height / 2;
-            phase += 0.02;
-
-            if (this.analyser && (this.state === 'listening' || this.state === 'speaking')) {
-                this.analyser.getByteFrequencyData(freqData);
-
-                const isListening = this.state === 'listening';
-                const baseRadius = 88;
-                const colors = isListening
-                    ? ['rgba(6, 182, 212, 0.7)', 'rgba(59, 130, 246, 0.5)', 'rgba(139, 92, 246, 0.3)']
-                    : ['rgba(236, 72, 153, 0.7)', 'rgba(168, 85, 247, 0.5)', 'rgba(244, 63, 94, 0.3)'];
-
-                this.canvasCtx.save();
-                this.canvasCtx.translate(cx, cy);
-
-                colors.forEach((col, idx) => {
-                    this.canvasCtx!.beginPath();
-                    for (let i = 0; i < freqData.length; i += 2) {
-                        const angle = (i / freqData.length) * Math.PI * 2 + phase * (idx % 2 === 0 ? 1 : -1);
-                        const v = freqData[i] / 255;
-                        const r = baseRadius + (v * 45 * (idx + 1) * 0.5) + (idx * 8);
-                        const x = Math.cos(angle) * r;
-                        const y = Math.sin(angle) * r;
-
-                        if (i === 0) this.canvasCtx!.moveTo(x, y);
-                        else this.canvasCtx!.lineTo(x, y);
-                    }
-                    this.canvasCtx!.closePath();
-                    this.canvasCtx!.strokeStyle = col;
-                    this.canvasCtx!.lineWidth = 2.5;
-                    this.canvasCtx!.stroke();
-                });
-
-                this.canvasCtx.restore();
-            } else if (this.state === 'thinking') {
-                // Breathing glow orb
-                const r = 85 + Math.sin(phase * 3) * 8;
-                this.canvasCtx.save();
-                this.canvasCtx.translate(cx, cy);
-                this.canvasCtx.beginPath();
-                this.canvasCtx.arc(0, 0, r, 0, Math.PI * 2);
-                this.canvasCtx.strokeStyle = 'rgba(139, 92, 246, 0.6)';
-                this.canvasCtx.lineWidth = 3;
-                this.canvasCtx.stroke();
-                this.canvasCtx.restore();
-            }
-
-            requestAnimationFrame(render);
-        };
-
-        requestAnimationFrame(render);
     }
 }
 

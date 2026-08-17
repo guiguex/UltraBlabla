@@ -13,7 +13,9 @@
     "android:sync": "bun run build && bun x cap sync android",
     "android:open": "bun x cap open android",
     "android:prepare": "powershell -ExecutionPolicy Bypass -File build-android.ps1",
-    "android:release": "cd android && gradlew.bat assembleRelease"
+    "android:release": "cd android && gradlew.bat assembleRelease",
+    "wails:build": "bun run build && powershell -Command \"New-Item -ItemType Directory -Force -Path src-wails\\frontend\\dist; Copy-Item -Path public\\* -Destination src-wails\\frontend\\dist -Recurse -Force\" && cd src-wails && wails3 build",
+    "wails:dev": "cd src-wails && wails3 dev"
   },
   "dependencies": {
     "@capacitor-community/text-to-speech": "^8.0.2",

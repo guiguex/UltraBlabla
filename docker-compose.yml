@@ -1,5 +1,9 @@
-# Docker-compose plus nécessaire
-# UltraBlabla utilise maintenant :
-# - UltraCoder API (port 8441) pour le LLM
-# - Web Speech API pour STT
-# - neuTTS (Hugging Face) pour TTS
+version: '3.8'
+services:
+  web:
+    build: .
+    ports:
+      - "44432:44432"
+    environment:
+      - NODE_ENV=production
+      - PORT=44432

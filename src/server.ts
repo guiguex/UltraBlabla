@@ -24,14 +24,33 @@ const VOICE_MAPPING: Record<string, { model?: string; speaker?: string; voice?: 
 };
 
 const app = new Elysia()
-  .use(staticPlugin({
-    assets: 'public',
-    prefix: '/',
-  }))
   .get('/', async ({ set }) => {
     set.headers['Content-Type'] = 'text/html';
-    const file = await fetch(new URL('../public/index.html', import.meta.url));
-    return file.text();
+    const file = Bun.file(new URL('../public/index.html', import.meta.url));
+    return file;
+  })
+  .get('/*', async ({ params, set }) => {
+    const path = params['*'];
+    if (!path) return new Response('Not found', { status: 404 });
+    
+    const file = Bun.file(new URL(`../public/${path}`, import.meta.url));
+    if (await file.exists()) {
+      const ext = path.split('.').pop()?.toLowerCase();
+      const mimeTypes: Record<string, string> = {
+        'css': 'text/css;charset=utf-8',
+        'js': 'application/javascript;charset=utf-8',
+        'html': 'text/html;charset=utf-8',
+        'png': 'image/png',
+        'ico': 'image/x-icon',
+        'webmanifest': 'application/manifest+json'
+      };
+      if (ext && mimeTypes[ext]) {
+        set.headers['Content-Type'] = mimeTypes[ext];
+      }
+      return file;
+    }
+    set.status = 404;
+    return 'Not found';
   })
 
   // Configuration et statut

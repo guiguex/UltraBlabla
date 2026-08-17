@@ -1,0 +1,67 @@
+/* ========================================
+   RESPONSIVE DESIGN (DESKTOP/WEBVIEW)
+======================================== */
+
+@media screen and (min-width: 768px) {
+    body {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        background-color: var(--quantum-black);
+        overflow: hidden; /* Prevent body scroll, keep it inside holo-container */
+    }
+
+    /* Limit container size on large screens, make it look like a sleek device/window */
+    .holo-container {
+        width: 100%;
+        max-width: 480px; /* Mobile width */
+        height: 90vh; /* Constrain height */
+        min-height: 700px;
+        max-height: 950px;
+        margin: auto;
+        border-radius: 40px;
+        border: 1px solid var(--glass-border);
+        box-shadow: 
+            0 0 50px rgba(0, 255, 255, 0.1), 
+            0 0 100px rgba(139, 92, 246, 0.1),
+            inset 0 0 20px rgba(255, 255, 255, 0.05);
+        overflow: hidden;
+        position: relative;
+        background: rgba(10, 10, 10, 0.6);
+        /* 3D tilt effect on hover could be cool, but simple shadow is enough for now */
+    }
+
+    /* Enhance background for desktop */
+    .neural-bg {
+        filter: brightness(1.2) contrast(1.1);
+        /* Subtle parallax or breathing effect for the desktop background */
+        animation: desktop-bg-breathe 20s ease-in-out infinite alternate;
+    }
+
+    @keyframes desktop-bg-breathe {
+        0% { transform: scale(1); }
+        100% { transform: scale(1.05); }
+    }
+
+    /* Ensure flex children within the constrained height scroll if needed */
+    .quantum-main {
+        flex: 1;
+        overflow-y: auto;
+        /* Custom scrollbar for desktop */
+        scrollbar-width: thin;
+        scrollbar-color: var(--holo-primary) transparent;
+    }
+
+    .quantum-main::-webkit-scrollbar {
+        width: 4px;
+    }
+
+    .quantum-main::-webkit-scrollbar-track {
+        background: transparent;
+    }
+
+    .quantum-main::-webkit-scrollbar-thumb {
+        background-color: var(--holo-primary);
+        border-radius: 10px;
+    }
+}

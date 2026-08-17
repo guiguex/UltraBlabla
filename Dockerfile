@@ -11,6 +11,6 @@ FROM oven/bun:1.1-alpine
 WORKDIR /app
 COPY --from=builder /app /app
 ENV NODE_ENV=production
-ENV PORT=3000
-EXPOSE 3000
+ENV PORT=44432
+EXPOSE 44432
 CMD ["bun", "run", "src/server.ts"]

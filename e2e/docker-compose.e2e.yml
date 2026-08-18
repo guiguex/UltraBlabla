@@ -1,0 +1,18 @@
+version: '3.8'
+
+services:
+  playwright-tests:
+    build:
+      context: .
+      dockerfile: Dockerfile.e2e
+    container_name: ultrablabla-e2e
+    volumes:
+      - ./tests:/app/tests
+      - ./test-results:/app/test-results
+      - ./playwright-report:/app/playwright-report
+      - ./assets:/app/assets
+    environment:
+      - CI=true
+      - TARGET_URL=https://ultrablabla.guig.dev/
+    ipc: host # Recommandé par Playwright pour éviter les crashs de chrome
+    command: bun x playwright test

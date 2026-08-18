@@ -1,0 +1,14 @@
+{
+  "name": "ultrablabla-e2e",
+  "version": "1.0.0",
+  "description": "E2E automated testing for UltraBlabla with Playwright",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.41.0",
+    "@types/node": "^20.0.0"
+  }
+}

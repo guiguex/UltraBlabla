@@ -1,0 +1,19 @@
+# On utilise l'image officielle Playwright
+FROM mcr.microsoft.com/playwright:v1.62.1-jammy
+
+# Installation de curl et unzip pour installer bun
+RUN apt-get update && apt-get install -y curl unzip && rm -rf /var/lib/apt/lists/*
+
+# Installation de bun
+RUN curl -fsSL https://bun.sh/install | bash
+ENV PATH="/root/.bun/bin:${PATH}"
+
+WORKDIR /app
+
+# On copie uniquement les dépendances en premier
+COPY package.json ./
+# Installation via bun
+RUN bun install
+
+# On copie le reste (le test sera monté en volume, mais on copie la config)
+COPY playwright.config.ts ./

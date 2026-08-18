@@ -422,3 +422,55 @@
         opacity: 0.5;
     }
 }
+
+/* ========================================
+   Holographic Streaming Subtitles
+======================================== */
+.holo-subtitles-container {
+    position: absolute;
+    top: 35%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 85%;
+    max-width: 900px;
+    text-align: center;
+    z-index: 9999;
+    pointer-events: none;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 26px;
+    font-weight: 300;
+    line-height: 1.5;
+    color: var(--holo-primary);
+    text-shadow: 0 0 10px var(--holo-primary), 0 0 20px var(--quantum-purple), 0 0 30px var(--holo-primary);
+    transition: opacity 2s ease-in-out, transform 2s cubic-bezier(0.4, 0, 0.2, 1), filter 2s ease-in-out;
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+}
+
+.holo-subtitles-container.fade-out {
+    opacity: 0;
+    transform: translate(-50%, -60%) scale(1.05);
+    filter: blur(15px);
+}
+
+.holo-char {
+    display: inline-block;
+    opacity: 0;
+    animation: holo-char-appear 0.08s forwards ease-out;
+}
+
+@keyframes holo-char-appear {
+    0% {
+        opacity: 0;
+        transform: scale(1.8) translateY(15px);
+        filter: blur(8px) brightness(200%);
+        color: #fff;
+    }
+    100% {
+        opacity: 1;
+        transform: scale(1) translateY(0);
+        filter: blur(0) brightness(100%);
+        color: var(--holo-primary);
+    }
+}

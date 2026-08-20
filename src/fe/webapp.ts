@@ -7,29 +7,13 @@ import { WsAsrClient, WsVoiceClient, AudioChunkPlayer, Vad, startPcmCapture } fr
 
 const IS_WEB = Capacitor.getPlatform() === 'web';
 
-declare global { interface Window { __ULTRA_FAST_VOICE__?: boolean } }
-
 type LiveState = 'idle' | 'listening' | 'thinking' | 'speaking';
 
 class UltraBlablaLiveApp {
     private state: LiveState = 'idle';
     private audioCtx: AudioContext | null = null;
-    private micStream: MediaStream | null = null;
-    private analyser: AnalyserNode | null = null;
-    private mediaRecorder: MediaRecorder | null = null;
-    private recordedChunks: Blob[] = [];
-    private currentAudioSource: AudioBufferSourceNode | null = null;
-    private gainNode: GainNode | null = null;
 
-    // VAD & Turn-Taking
-    private isSpeakingVoice: boolean = false;
-    private silenceTimer: number | null = null;
-    private noiseFloor: number = 12;
-    private speechOnsetFrames: number = 0;
-    private speechStartTime: number = 0;
-    private isVADActive: boolean = false;
-
-    // Ultra-fast WS voice path (Task 9, gated by __ULTRA_FAST_VOICE__)
+    // Ultra-fast WS voice path (Task 9, gated by __ULTRA_FAST_VOICE__ — always true as of v1.1.0)
     private wsAsr?: WsAsrClient;
     private wsVoice?: WsVoiceClient;
     private player?: AudioChunkPlayer;
@@ -58,7 +42,7 @@ class UltraBlablaLiveApp {
         this.bindElements();
         this.setupListeners();
         this.updateUI('idle');
-        
+
         if (IS_WEB) {
             this.initNextGenWeb();
             this.initWebAudioApi();
@@ -78,7 +62,7 @@ class UltraBlablaLiveApp {
                 console.error('[Web Next-Gen] Erreur SW:', err);
             }
         }
-        
+
         // Initialiser Turnstile
         if (typeof (window as any).turnstile !== 'undefined') {
             (window as any).turnstile.render('#turnstile-container', {
@@ -90,14 +74,11 @@ class UltraBlablaLiveApp {
     }
 
     private initWebAudioApi() {
-        // Advanced Web Audio API for Neural Visualization
+        // audioCtx is used by playChime() to give audible feedback on listen/stop.
+        // The ultra-fast path uses its own AudioContext (created in startListening()).
         try {
             const AudioContextCls = window.AudioContext || (window as any).webkitAudioContext;
             this.audioCtx = new AudioContextCls();
-            this.analyser = this.audioCtx.createAnalyser();
-            this.analyser.fftSize = 256;
-            this.gainNode = this.audioCtx.createGain();
-            this.gainNode.connect(this.audioCtx.destination);
             console.log('[Web Next-Gen] Web Audio API prête.');
         } catch (err) {
             console.warn('[Web Next-Gen] Web Audio API non disponible:', err);
@@ -135,11 +116,10 @@ class UltraBlablaLiveApp {
 
         // Clear History
         this.clearBtn?.addEventListener('click', () => {
-            this.stopSpeaking();
             this.clearMessages();
             this.addMessage('SYSTEM', 'Historique nettoyé. Prêt à discuter.', 'system');
             this.playChime(400, 0.08);
-            if (this.state !== 'idle') this.stopLiveSession();
+            if (this.state !== 'idle') this.stopListening();
         });
 
         // Space shortcut
@@ -155,20 +135,12 @@ class UltraBlablaLiveApp {
         if (this.state === 'speaking') {
             // Barge-in instantané
             this.stopSpeaking();
-            if (window.__ULTRA_FAST_VOICE__) {
-                void this.startUltraFastListening();
-            } else {
-                this.startListening();
-            }
+            void this.startListening();
             return;
         }
 
         if (this.state === 'listening') {
-            if (window.__ULTRA_FAST_VOICE__) {
-                this.stopUltraFastListening();
-            } else {
-                this.stopLiveSession();
-            }
+            this.stopListening();
             return;
         }
 
@@ -177,19 +149,14 @@ class UltraBlablaLiveApp {
         }
 
         // Start Live Session
-        if (window.__ULTRA_FAST_VOICE__) {
-            await this.startUltraFastListening();
-        } else {
-            await this.startListening();
-        }
+        await this.startListening();
     }
 
     // ----------------------------------------------------------------
-    // Ultra-fast WS voice path (Task 9)
-    // Gated by window.__ULTRA_FAST_VOICE__. Legacy path stays untouched.
+    // Ultra-fast WS voice path (Task 9). The only voice path in v1.1.0.
     // ----------------------------------------------------------------
 
-    private async startUltraFastListening() {
+    private async startListening() {
         // Task 5 carry-forward: 48 kHz context avoids 44.1 kHz pitch shift
         // (Math.round(2.75)=3 ⇒ ~14.7 kHz effective at 48 k → wrong rate).
         const AudioContextCls = window.AudioContext || (window as any).webkitAudioContext;
@@ -265,7 +232,7 @@ class UltraBlablaLiveApp {
         });
     }
 
-    private stopUltraFastListening() {
+    private stopListening() {
         // Stop PCM capture worklet
         this.capture?.stop();
         // Clear the VAD polling interval
@@ -286,7 +253,9 @@ class UltraBlablaLiveApp {
     }
 
     private restartListening() {
-        // Reuse legacy restart so the existing UX (chime + analyser) keeps working.
+        // Re-start the ultra-fast listening session. Used by finishUtterance() when
+        // the ASR returned an empty transcript (noise / cough) — re-arm the mic so
+        // the next utterance is captured without requiring a second button press.
         void this.startListening();
     }
 
@@ -297,364 +266,11 @@ class UltraBlablaLiveApp {
         this.addMessage('SYSTEM', msg, 'system');
     }
 
-    private async ensureAudioContext() {
-        if (!this.audioCtx) {
-            const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
-            this.audioCtx = new AudioContextClass();
-            this.gainNode = this.audioCtx.createGain();
-            this.gainNode.connect(this.audioCtx.destination);
-        }
-        if (this.audioCtx.state === 'suspended') {
-            await this.audioCtx.resume();
-        }
-    }
-
-    private async startListening() {
-        try {
-            await this.ensureAudioContext();
-            this.stopSpeaking();
-
-            if (!this.micStream) {
-                this.micStream = await navigator.mediaDevices.getUserMedia({
-                    audio: {
-                        echoCancellation: true,
-                        noiseSuppression: true,
-                        autoGainControl: true,
-                    }
-                });
-            }
-
-            if (!this.analyser && this.audioCtx && this.micStream) {
-                const source = this.audioCtx.createMediaStreamSource(this.micStream);
-                this.analyser = this.audioCtx.createAnalyser();
-                this.analyser.fftSize = 512;
-                this.analyser.smoothingTimeConstant = 0.3;
-                source.connect(this.analyser);
-            }
-
-            this.recordedChunks = [];
-            const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
-                ? 'audio/webm;codecs=opus'
-                : 'audio/webm';
-
-            this.mediaRecorder = new MediaRecorder(this.micStream, { mimeType });
-            this.mediaRecorder.ondataavailable = (e) => {
-                if (e.data && e.data.size > 0) this.recordedChunks.push(e.data);
-            };
-            this.mediaRecorder.onstop = () => this.processAudio();
-
-            this.mediaRecorder.start(100);
-            this.updateUI('listening');
-            this.playChime(880, 0.05);
-
-            this.isSpeakingVoice = false;
-            this.speechOnsetFrames = 0;
-            this.speechStartTime = 0;
-            this.startVAD();
-
-        } catch (err: any) {
-            console.error('Mic Error:', err);
-            this.updateUI('idle');
-            this.addMessage('SYSTEM', `Microphone inaccessible : ${err?.message || err}`, 'system');
-        }
-    }
-
-    private startVAD() {
-        if (this.isVADActive) return;
-        this.isVADActive = true;
-
-        const bufferLength = this.analyser?.frequencyBinCount || 256;
-        const dataArray = new Uint8Array(bufferLength);
-
-        const checkAudioFrame = () => {
-            if (!this.isVADActive || this.state !== 'listening' || !this.analyser) return;
-
-            this.analyser.getByteFrequencyData(dataArray);
-
-            // Énergie vocale humaine (300Hz - 3400Hz)
-            let voiceSum = 0;
-            const low = 3;
-            const high = Math.min(42, bufferLength);
-
-            for (let i = low; i < high; i++) {
-                voiceSum += dataArray[i];
-            }
-            const currentVoiceEnergy = voiceSum / (high - low);
-
-            if (!this.isSpeakingVoice) {
-                // Ajustement dynamique du bruit de fond
-                this.noiseFloor = (this.noiseFloor * 0.95) + (currentVoiceEnergy * 0.05);
-            }
-
-            const threshold = Math.max(14, this.noiseFloor * 1.5 + 8);
-            const hasVoice = currentVoiceEnergy > threshold;
-
-            if (hasVoice) {
-                this.speechOnsetFrames++;
-                if (this.speechOnsetFrames >= 3) {
-                    if (!this.isSpeakingVoice) {
-                        this.isSpeakingVoice = true;
-                        this.speechStartTime = Date.now();
-                        if (this.status) this.status.textContent = '👂 Écoute en cours...';
-                    }
-                    if (this.silenceTimer) {
-                        window.clearTimeout(this.silenceTimer);
-                        this.silenceTimer = null;
-                    }
-                }
-            } else {
-                this.speechOnsetFrames = Math.max(0, this.speechOnsetFrames - 1);
-                if (this.isSpeakingVoice) {
-                    const speechDuration = Date.now() - this.speechStartTime;
-                    if (speechDuration >= 400 && !this.silenceTimer) {
-                        // Silence détecté -> Envoi automatique de la parole
-                        this.silenceTimer = window.setTimeout(() => {
-                            if (this.state === 'listening') {
-                                this.finalizeListening();
-                            }
-                        }, 750);
-                    }
-                }
-            }
-
-            requestAnimationFrame(checkAudioFrame);
-        };
-
-        requestAnimationFrame(checkAudioFrame);
-    }
-
-    private stopVAD() {
-        this.isVADActive = false;
-        if (this.silenceTimer) {
-            window.clearTimeout(this.silenceTimer);
-            this.silenceTimer = null;
-        }
-    }
-
-    private finalizeListening() {
-        this.stopVAD();
-        if (this.mediaRecorder && this.mediaRecorder.state !== 'inactive') {
-            this.mediaRecorder.stop();
-            this.updateUI('thinking');
-            this.playChime(520, 0.05);
-        }
-    }
-
-    private stopLiveSession() {
-        this.stopVAD();
-        if (this.mediaRecorder && this.mediaRecorder.state !== 'inactive') {
-            this.mediaRecorder.stop();
-        }
-        this.stopSpeaking();
-        this.updateUI('idle');
-        this.playChime(350, 0.06);
-    }
-
-    private async processAudio() {
-        if (this.recordedChunks.length === 0) {
-            this.updateUI('idle');
-            return;
-        }
-
-        const audioBlob = new Blob(this.recordedChunks, { type: 'audio/webm' });
-        if (audioBlob.size < 1200) {
-            // Trop court, relance
-            setTimeout(() => this.startListening(), 200);
-            return;
-        }
-
-        try {
-            const reader = new FileReader();
-            const b64Promise = new Promise<string>((resolve) => {
-                reader.onloadend = () => resolve((reader.result as string).split(',')[1] || '');
-            });
-            reader.readAsDataURL(audioBlob);
-            const audioBase64 = await b64Promise;
-
-            const pipelineUrl = '/api/voice/pipeline';
-
-            const response = await fetch(pipelineUrl, {
-                method: 'POST',
-                headers: { 
-                    'Content-Type': 'application/json', 
-                    'Origin': 'https://guig.dev',
-                    'X-Turnstile-Token': this.turnstileToken || ''
-                },
-                body: JSON.stringify({
-                    audio: audioBase64,
-                    context: 'Tu es UltraBlabla, un assistant vocal ultra-rapide, chaleureux, concis et dynamique. Réponds en français en moins de 35 mots.',
-                    voice: 'fr-female-1',
-                })
-            });
-
-            if (!response.ok) {
-                // Fallback direct
-                await this.executeFallback(audioBase64);
-                return;
-            }
-
-            const data = await response.json();
-
-            if (data.transcript) {
-                this.addMessage('VOUS', data.transcript, 'user');
-            }
-
-            if (data.response) {
-                this.addMessage('ULTRABLABLA', data.response, 'ai');
-                const estimatedMs = Math.max(2500, (data.response.length / 15) * 1000);
-                this.streamHoloSubtitle(data.response, estimatedMs);
-            }
-
-            if (data.audio_b64) {
-                const binaryStr = atob(data.audio_b64);
-                const bytes = new Uint8Array(binaryStr.length);
-                for (let i = 0; i < binaryStr.length; i++) bytes[i] = binaryStr.charCodeAt(i);
-                await this.playAudioBuffer(bytes.buffer);
-            } else if (data.response) {
-                await this.speakText(data.response);
-            } else {
-                this.onPlaybackFinished();
-            }
-
-        } catch (err: any) {
-            console.error('Pipeline error:', err);
-            this.addMessage('SYSTEM', 'Connexion en cours de rétablissement...', 'system');
-            setTimeout(() => this.startListening(), 1000);
-        }
-    }
-
-    private async executeFallback(audioBase64: string) {
-        const asrUrl = '/api/voice/transcribe';
-        const asrRes = await fetch(asrUrl, {
-            method: 'POST',
-            headers: { 
-                'Content-Type': 'application/json', 
-                'Origin': 'https://guig.dev',
-                'X-Turnstile-Token': this.turnstileToken || ''
-            },
-            body: JSON.stringify({ audio: audioBase64, mime_type: 'audio/webm' })
-        });
-        const asrData = asrRes.ok ? await asrRes.json() : { text: '' };
-        const text = asrData.text || '';
-
-        if (!text.trim()) {
-            this.onPlaybackFinished();
-            return;
-        }
-
-        this.addMessage('VOUS', text, 'user');
-
-        const chatUrl = '/api/chat';
-        const chatRes = await fetch(chatUrl, {
-            method: 'POST',
-            headers: { 
-                'Content-Type': 'application/json', 
-                'Origin': 'https://guig.dev',
-                'X-Turnstile-Token': this.turnstileToken || ''
-            },
-            body: JSON.stringify({
-                model: '@cf/meta/llama-3.1-8b-instruct-fast',
-                messages: [
-                    { role: 'system', content: 'Tu es UltraBlabla. Réponds en français de façon vivante et concise en moins de 30 mots.' },
-                    { role: 'user', content: text }
-                ],
-                max_tokens: 120,
-                temperature: 0.6
-            })
-        });
-
-        const chatData = await chatRes.json();
-        const reply = chatData.choices?.[0]?.message?.content || chatData.response || '';
-        this.addMessage('ULTRABLABLA', reply, 'ai');
-        
-        const estimatedMs = Math.max(2500, (reply.length / 15) * 1000);
-        this.streamHoloSubtitle(reply, estimatedMs);
-        
-        await this.speakText(reply);
-    }
-
-    private async speakText(text: string) {
-        try {
-            this.updateUI('speaking');
-            const speakUrl = '/api/voice/speak';
-
-            let res = await fetch(speakUrl, {
-                method: 'POST',
-                headers: { 
-                    'Content-Type': 'application/json', 
-                    'Origin': 'https://guig.dev',
-                    'X-Turnstile-Token': this.turnstileToken || ''
-                },
-                body: JSON.stringify({ text, voice: 'fr-female-1', lang: 'fr' })
-            });
-
-            const arrayBuffer = await res.arrayBuffer();
-            await this.playAudioBuffer(arrayBuffer);
-        } catch (err) {
-            console.error('TTS error:', err);
-            this.onPlaybackFinished();
-        }
-    }
-
-    private async playAudioBuffer(arrayBuffer: ArrayBuffer) {
-        await this.ensureAudioContext();
-        if (!this.audioCtx || !this.gainNode) return;
-
-        try {
-            this.stopSpeaking();
-            this.updateUI('speaking');
-
-            const audioBuffer = await this.audioCtx.decodeAudioData(arrayBuffer);
-            const source = this.audioCtx.createBufferSource();
-            source.buffer = audioBuffer;
-
-            if (this.analyser) {
-                source.connect(this.analyser);
-                this.analyser.connect(this.gainNode);
-            } else {
-                source.connect(this.gainNode);
-            }
-
-            source.onended = () => {
-                this.currentAudioSource = null;
-                this.onPlaybackFinished();
-            };
-
-            this.currentAudioSource = source;
-            source.start(0);
-
-        } catch (err) {
-            console.error('Audio decode error:', err);
-            this.onPlaybackFinished();
-        }
-    }
-
     private stopSpeaking() {
-        if (this.currentAudioSource && this.audioCtx && this.gainNode) {
-            try {
-                this.gainNode.gain.setValueAtTime(this.gainNode.gain.value, this.audioCtx.currentTime);
-                this.gainNode.gain.linearRampToValueAtTime(0.001, this.audioCtx.currentTime + 0.035);
-                setTimeout(() => {
-                    if (this.currentAudioSource) {
-                        try {
-                            this.currentAudioSource.stop();
-                            this.currentAudioSource.disconnect();
-                        } catch { /* ignore */ }
-                        this.currentAudioSource = null;
-                    }
-                    if (this.gainNode && this.audioCtx) {
-                        this.gainNode.gain.setValueAtTime(1.0, this.audioCtx.currentTime);
-                    }
-                }, 40);
-            } catch {
-                this.currentAudioSource = null;
-            }
-        }
-    }
-
-    private onPlaybackFinished() {
-        // Enchaîne directement l'écoute pour conversation continue
-        setTimeout(() => this.startListening(), 200);
+        // Stop the ultra-fast audio player if it's mid-playback (used for barge-in).
+        try { this.player?.stop(); } catch { /* ignore */ }
+        this.audioEndUnsub?.();
+        this.audioEndUnsub = undefined;
     }
 
     private addMessage(speaker: string, text: string, type: 'user' | 'ai' | 'system') {
@@ -664,7 +280,7 @@ class UltraBlablaLiveApp {
 
         const messageEl = document.createElement('div');
         messageEl.className = `message ${type}-message`;
-        
+
         // Inline styling to match Next Gen aesthetics for dynamic messages
         messageEl.style.padding = '12px 16px';
         messageEl.style.margin = '10px 0';
@@ -675,9 +291,9 @@ class UltraBlablaLiveApp {
         messageEl.style.border = `1px solid ${type === 'user' ? 'rgba(6, 182, 212, 0.2)' : (type === 'ai' ? 'rgba(139, 92, 246, 0.2)' : 'rgba(255, 255, 255, 0.1)')}`;
         messageEl.style.color = type === 'user' ? '#fff' : (type === 'ai' ? '#e9d5ff' : '#a1a1aa');
         messageEl.style.boxShadow = `0 4px 15px ${type === 'user' ? 'rgba(6, 182, 212, 0.05)' : (type === 'ai' ? 'rgba(139, 92, 246, 0.05)' : 'none')}`;
-        
+
         messageEl.innerHTML = `<strong style="color: ${type === 'user' ? '#06b6d4' : (type === 'ai' ? '#c084fc' : '#a1a1aa')}; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; display: block; margin-bottom: 6px;">${speaker}</strong> ${text}`;
-        
+
         this.messages.appendChild(messageEl);
         this.messages.scrollTop = this.messages.scrollHeight;
     }
@@ -689,25 +305,25 @@ class UltraBlablaLiveApp {
 
     private streamHoloSubtitle(text: string, durationEstimateMs: number) {
         if (!this.holoSubtitles) return;
-        
+
         if (this.holoSubtitlesTimeout) {
             window.clearTimeout(this.holoSubtitlesTimeout);
             this.holoSubtitlesTimeout = null;
         }
-        
+
         this.holoSubtitles.classList.remove('fade-out');
         this.holoSubtitles.innerHTML = '';
-        
+
         const chars = text.split('');
         let i = 0;
-        
+
         // Environ 15 à 30ms par caractère pour un effet fluide "Next Gen"
         const charDelay = Math.min(30, Math.max(10, durationEstimateMs / (chars.length || 1)));
-        
+
         const streamInterval = setInterval(() => {
             if (i >= chars.length) {
                 clearInterval(streamInterval);
-                
+
                 // Garde le texte affiché un court instant après avoir fini de l'écrire, puis disparaît
                 this.holoSubtitlesTimeout = window.setTimeout(() => {
                     this.holoSubtitles.classList.add('fade-out');
@@ -717,15 +333,15 @@ class UltraBlablaLiveApp {
                         }
                     }, 2000); // Attendre la fin de la transition CSS (2s)
                 }, Math.max(1500, durationEstimateMs - (chars.length * charDelay) + 500));
-                
+
                 return;
             }
-            
+
             const span = document.createElement('span');
             span.className = 'holo-char';
             span.textContent = chars[i];
             if (chars[i] === ' ') span.innerHTML = '&nbsp;';
-            
+
             this.holoSubtitles.appendChild(span);
             i++;
         }, charDelay);

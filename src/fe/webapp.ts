@@ -38,6 +38,7 @@ class UltraBlablaLiveApp {
     private vadInterval?: ReturnType<typeof setInterval>;
     private lastRms = 0;
     private asrReady = false;
+    private audioEndUnsub?: () => void;
 
     // DOM Elements (Next Gen Design)
     private recordBtn!: HTMLButtonElement;
@@ -163,7 +164,11 @@ class UltraBlablaLiveApp {
         }
 
         if (this.state === 'listening') {
-            this.stopLiveSession();
+            if (window.__ULTRA_FAST_VOICE__) {
+                this.stopUltraFastListening();
+            } else {
+                this.stopLiveSession();
+            }
             return;
         }
 
@@ -208,19 +213,21 @@ class UltraBlablaLiveApp {
         this.wsAsr.on('partial', (msg) => this.streamHoloSubtitle(msg.text, 2000));
         this.wsAsr.on('error',   (msg) => this.showError(`ASR: ${msg.message}`));
         this.wsVoice.on('audio', (msg) => {
+            this.updateUI('speaking');
             this.player?.scheduleChunk(msg.data).catch(console.error);
         });
         this.wsVoice.on('done',  (msg) => console.info('voice_ttfa:', msg.ttfa_ms));
         this.wsVoice.on('error', (msg) => this.showError(`TTS: ${msg.message}`));
 
         this.wsAsr.start();
+        this.updateUI('listening');
         this.capture = await startPcmCapture({
             ctx,
             sourceNode: source,
             sampleRate: 16000,
             frameMs: 100,
             onFrame: (pcm) => this.wsAsr?.sendPcm(pcm),
-            onRms:  (rms) => { this.lastRms = rms; this.vad?.push(rms, performance.now()); },
+            onRms:  (rms) => { this.lastRms = rms; },
         });
 
         // VAD-driven end of utterance (poll ~10 Hz to match onRms rate)
@@ -251,6 +258,31 @@ class UltraBlablaLiveApp {
         }
         this.streamHoloSubtitle(text, 2000);
         this.wsVoice?.chat(text, { voice: this.currentVoice() });
+        // Review fix: reset state to 'idle' when TTS audio playback ends.
+        this.audioEndUnsub?.();
+        this.audioEndUnsub = this.player?.onEnd(() => {
+            this.updateUI('idle');
+        });
+    }
+
+    private stopUltraFastListening() {
+        // Stop PCM capture worklet
+        this.capture?.stop();
+        // Clear the VAD polling interval
+        if (this.vadInterval) {
+            clearInterval(this.vadInterval);
+            this.vadInterval = undefined;
+        }
+        // Close both WS sockets (wsVoice uses abort() per the WsVoiceClient API)
+        try { this.wsAsr?.close(); } catch { /* ignore */ }
+        try { this.wsVoice?.abort(); } catch { /* ignore */ }
+        // Stop audio player if mid-playback
+        try { this.player?.stop(); } catch { /* ignore */ }
+        // Drop the onEnd subscription so it can't fire after a manual stop
+        this.audioEndUnsub?.();
+        this.audioEndUnsub = undefined;
+        this.updateUI('idle');
+        this.playChime(350, 0.06);
     }
 
     private restartListening() {

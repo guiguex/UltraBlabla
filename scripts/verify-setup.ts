@@ -47,7 +47,6 @@ function checkFileContent(path: string, name: string, searchPattern: string): Ch
 console.log('📱 Android Native Architecture:');
 checks.push(checkFile('android/app/build.gradle', 'Android Build Config'));
 checks.push(checkFileContent('android/app/build.gradle', 'NDK Configuration', 'android.ndkVersion'));
-checks.push(checkFile('android/app/src/main/java/com/ultrablabla/app/VoicePlugin.java', 'VoicePlugin Native'));
 checks.push(checkFile('android/app/src/main/java/com/ultrablabla/app/LlamaNative.java', 'LlamaNative JNI'));
 
 console.log('🧠 C++ JNI Implementation:');

@@ -3,8 +3,11 @@
  * 1-Click Zero Friction • Fluid Adaptive VAD • Adapted for Next Gen Design
  */
 import { Capacitor } from '@capacitor/core';
+import { WsAsrClient, WsVoiceClient, AudioChunkPlayer, Vad, startPcmCapture } from './voice/index';
 
 const IS_WEB = Capacitor.getPlatform() === 'web';
+
+declare global { interface Window { __ULTRA_FAST_VOICE__?: boolean } }
 
 type LiveState = 'idle' | 'listening' | 'thinking' | 'speaking';
 
@@ -25,6 +28,16 @@ class UltraBlablaLiveApp {
     private speechOnsetFrames: number = 0;
     private speechStartTime: number = 0;
     private isVADActive: boolean = false;
+
+    // Ultra-fast WS voice path (Task 9, gated by __ULTRA_FAST_VOICE__)
+    private wsAsr?: WsAsrClient;
+    private wsVoice?: WsVoiceClient;
+    private player?: AudioChunkPlayer;
+    private vad?: Vad;
+    private capture?: { stop(): void };
+    private vadInterval?: ReturnType<typeof setInterval>;
+    private lastRms = 0;
+    private asrReady = false;
 
     // DOM Elements (Next Gen Design)
     private recordBtn!: HTMLButtonElement;
@@ -141,7 +154,11 @@ class UltraBlablaLiveApp {
         if (this.state === 'speaking') {
             // Barge-in instantané
             this.stopSpeaking();
-            this.startListening();
+            if (window.__ULTRA_FAST_VOICE__) {
+                void this.startUltraFastListening();
+            } else {
+                this.startListening();
+            }
             return;
         }
 
@@ -155,7 +172,97 @@ class UltraBlablaLiveApp {
         }
 
         // Start Live Session
-        await this.startListening();
+        if (window.__ULTRA_FAST_VOICE__) {
+            await this.startUltraFastListening();
+        } else {
+            await this.startListening();
+        }
+    }
+
+    // ----------------------------------------------------------------
+    // Ultra-fast WS voice path (Task 9)
+    // Gated by window.__ULTRA_FAST_VOICE__. Legacy path stays untouched.
+    // ----------------------------------------------------------------
+
+    private async startUltraFastListening() {
+        // Task 5 carry-forward: 48 kHz context avoids 44.1 kHz pitch shift
+        // (Math.round(2.75)=3 ⇒ ~14.7 kHz effective at 48 k → wrong rate).
+        const AudioContextCls = window.AudioContext || (window as any).webkitAudioContext;
+        const ctx = new AudioContextCls({ sampleRate: 48000 });
+        if (ctx.state === 'suspended') await ctx.resume();
+
+        const stream = await navigator.mediaDevices.getUserMedia({
+            audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true },
+            video: false,
+        });
+        const source = ctx.createMediaStreamSource(stream);
+
+        this.vad = new Vad();
+        this.player = new AudioChunkPlayer(ctx);
+        this.wsAsr = new WsAsrClient({ language: 'fr-CA' });
+        this.wsVoice = new WsVoiceClient();
+        this.asrReady = false;
+        this.lastRms = 0;
+
+        this.wsAsr.on('ready',   () => { this.asrReady = true; });
+        this.wsAsr.on('partial', (msg) => this.streamHoloSubtitle(msg.text, 2000));
+        this.wsAsr.on('error',   (msg) => this.showError(`ASR: ${msg.message}`));
+        this.wsVoice.on('audio', (msg) => {
+            this.player?.scheduleChunk(msg.data).catch(console.error);
+        });
+        this.wsVoice.on('done',  (msg) => console.info('voice_ttfa:', msg.ttfa_ms));
+        this.wsVoice.on('error', (msg) => this.showError(`TTS: ${msg.message}`));
+
+        this.wsAsr.start();
+        this.capture = await startPcmCapture({
+            ctx,
+            sourceNode: source,
+            sampleRate: 16000,
+            frameMs: 100,
+            onFrame: (pcm) => this.wsAsr?.sendPcm(pcm),
+            onRms:  (rms) => { this.lastRms = rms; this.vad?.push(rms, performance.now()); },
+        });
+
+        // VAD-driven end of utterance (poll ~10 Hz to match onRms rate)
+        this.vadInterval = setInterval(() => {
+            const state = this.vad?.push(this.lastRms, performance.now());
+            if (state === 'silence') {
+                this.vad?.reset();
+                if (this.vadInterval) { clearInterval(this.vadInterval); this.vadInterval = undefined; }
+                void this.finishUtterance();
+            }
+        }, 100);
+    }
+
+    private async finishUtterance() {
+        this.capture?.stop();
+        // Task 6 carry-forward: only call stop() once 'ready' has fired,
+        // otherwise ws.send('stop') throws InvalidStateError (CONNECTING).
+        if (!this.asrReady || !this.wsAsr) {
+            this.wsAsr?.close();
+            return;
+        }
+        const text = await this.wsAsr.stop();
+        // Task 6 carry-forward: pair every wsAsr.start() with wsAsr.close().
+        this.wsAsr.close();
+        if (text.trim().length === 0) {
+            this.restartListening();
+            return;
+        }
+        this.streamHoloSubtitle(text, 2000);
+        this.wsVoice?.chat(text, { voice: this.currentVoice() });
+    }
+
+    private restartListening() {
+        // Reuse legacy restart so the existing UX (chime + analyser) keeps working.
+        void this.startListening();
+    }
+
+    private currentVoice(): 'fr-female-1' { return 'fr-female-1'; }
+
+    private showError(msg: string) {
+        console.error('[voice]', msg);
+        this.addMessage('SYSTEM', msg, 'system');
     }
 
     private async ensureAudioContext() {

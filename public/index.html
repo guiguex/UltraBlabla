@@ -3,6 +3,16 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <!--
+      CSP for the ultra-fast WS voice path (Task 13).
+      - connect-src: the frontend now talks to api.guig.dev directly
+        (wss://api.guig.dev/v1/asr/stream and /v1/voice/stream) instead of the
+        removed /api/voice/* proxy.
+      - script-src/worker-src need blob: because startPcmCapture() loads the
+        PCM AudioWorklet from a Blob URL (src/fe/voice/pcmWorklet.ts).
+      - style-src/font-src cover the Google Fonts <link> tags below.
+    -->
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self' https://api.guig.dev wss://api.guig.dev; script-src 'self' 'unsafe-inline' blob:; worker-src 'self' blob:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob:; media-src 'self' blob: data:; base-uri 'self'; object-src 'none'">
     <title>UltraBlabla • AI Voice Neural Interface</title>
     <link rel="icon" type="image/png" href="icons/icon-32.png">
     <link rel="stylesheet" href="style.css">

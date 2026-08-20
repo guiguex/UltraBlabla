@@ -5,7 +5,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "playwright test"
+    "test": "playwright test",
+    "test:voice": "playwright test voice-stream.spec.ts"
   },
   "devDependencies": {
     "@playwright/test": "^1.41.0",

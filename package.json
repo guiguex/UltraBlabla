@@ -9,6 +9,8 @@
   },
   "scripts": {
     "dev": "bun run --hot src/server.ts",
+    "test": "bun test src/",
+    "test:watch": "bun test --watch src/",
     "build": "bun build src/fe/webapp.ts --outfile=public/webapp.js --target=browser --minify",
     "android:sync": "bun run build && bun x cap sync android",
     "android:open": "bun x cap open android",

@@ -14,6 +14,17 @@ function makeMockCtx() {
       const dur = buffers.get(String(b.byteLength)) ?? 1;
       return { duration: dur, length: dur * 16000, sampleRate: 16000, numberOfChannels: 1 } as any;
     },
+    createBuffer: (channels: number, length: number, sampleRate: number) => {
+      const dur = buffers.get(String(length * 2 * channels)) ?? (length / sampleRate);
+      const data = new Float32Array(length);
+      return {
+        duration: dur,
+        length,
+        sampleRate,
+        numberOfChannels: channels,
+        getChannelData: () => data,
+      } as any;
+    },
     createBufferSource: () => {
       const src: any = {
         buffer: null as any,

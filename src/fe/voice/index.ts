@@ -8,3 +8,5 @@ export { WsAsrClient } from './wsAsrClient';
 export type { WsAsrClientOpts } from './wsAsrClient';
 export { WsVoiceClient } from './wsVoiceClient';
 export type { WsVoiceClientOpts } from './wsVoiceClient';
+export { FallbackTts } from './fallbackTts';
+export type { FallbackTtsOptions } from './fallbackTts';

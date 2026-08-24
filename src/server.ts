@@ -60,10 +60,11 @@ const app = new Elysia()
   // Chat Completion (OpenAI format)
   .post('/api/chat', async ({ body, headers, set }) => {
     try {
+      const payload = typeof body === 'string' ? body : JSON.stringify(body);
       const response = await fetch(`${AI_API_URL}/v1/chat/completions`, {
         method: 'POST',
         headers: getProxyHeaders(headers, { 'Content-Type': 'application/json' }),
-        body: JSON.stringify(body)
+        body: payload
       });
 
       if (!response.ok) {
@@ -77,6 +78,61 @@ const app = new Elysia()
     } catch (error: any) {
       set.status = 500;
       return { error: 'Erreur Chat API: ' + (error?.message || error) };
+    }
+  })
+
+  // Health check
+  .get('/healthz', () => ({ status: 'ok', uptime: process.uptime() }))
+
+  // Voice Catalog Proxy
+  .get('/api/voice/voices', async ({ headers, set }) => {
+    try {
+      const response = await fetch(`${AI_API_URL}/v1/voice/voices`, {
+        headers: getProxyHeaders(headers)
+      });
+      const data = await response.json();
+      set.headers['Content-Type'] = 'application/json';
+      return data;
+    } catch (error: any) {
+      set.status = 500;
+      return { error: 'Erreur Voice Catalog: ' + (error?.message || error) };
+    }
+  })
+
+  // Voice Speak Proxy
+  .post('/api/voice/speak', async ({ body, headers, set }) => {
+    try {
+      const response = await fetch(`${AI_API_URL}/v1/voice/speak`, {
+        method: 'POST',
+        headers: getProxyHeaders(headers, { 'Content-Type': 'application/json' }),
+        body: JSON.stringify(body)
+      });
+      if (!response.ok) {
+        throw new Error(`Speak API error ${response.status}`);
+      }
+      const buffer = await response.arrayBuffer();
+      set.headers['Content-Type'] = response.headers.get('Content-Type') || 'audio/mpeg';
+      return new Uint8Array(buffer);
+    } catch (error: any) {
+      set.status = 500;
+      return { error: 'Erreur Voice Speak: ' + (error?.message || error) };
+    }
+  })
+
+  // Voice Transcribe Proxy
+  .post('/api/voice/transcribe', async ({ body, headers, set }) => {
+    try {
+      const response = await fetch(`${AI_API_URL}/v1/voice/transcribe`, {
+        method: 'POST',
+        headers: getProxyHeaders(headers, { 'Content-Type': 'application/json' }),
+        body: JSON.stringify(body)
+      });
+      const data = await response.json();
+      set.headers['Content-Type'] = 'application/json';
+      return data;
+    } catch (error: any) {
+      set.status = 500;
+      return { error: 'Erreur Voice Transcribe: ' + (error?.message || error) };
     }
   })
 

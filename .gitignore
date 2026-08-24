@@ -18,3 +18,9 @@ android/app/src/main/cpp/llama.cpp/
 public/vosk-model-small-fr-0.22.zip
 .vscode/settings.json
 *.png
+/jdk21
+/e2e
+/.playwright-mcp
+/.firebase
+/.agents
+/.serena

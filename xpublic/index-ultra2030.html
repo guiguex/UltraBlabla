@@ -3,27 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-    <!--
-      CSP for the ultra-fast WS voice path (Task 13).
-      - connect-src: the frontend now talks to api.guig.dev directly
-        (wss://api.guig.dev/v1/asr/stream and /v1/voice/stream) instead of the
-        removed /api/voice/* proxy.
-      - script-src/worker-src need blob: because startPcmCapture() loads the
-        PCM AudioWorklet from a Blob URL (src/fe/voice/pcmWorklet.ts).
-      - style-src/font-src cover the Google Fonts <link> tags below.
-    -->
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self' https://api.guig.dev wss://api.guig.dev; script-src 'self' 'unsafe-inline' blob: https://static.cloudflareinsights.com; worker-src 'self' blob:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob:; media-src 'self' blob: data:; base-uri 'self'; object-src 'none'">
     <title>UltraBlabla • AI Voice Neural Interface</title>
     <link rel="icon" type="image/png" href="icons/icon-32.png">
     <link rel="stylesheet" href="style.css">
-    <link rel="stylesheet" href="ultra-effects.css">
-    <link rel="stylesheet" href="responsive.css">
     <link rel="manifest" href="manifest.webmanifest">
     <meta name="theme-color" content="#0a0a0a">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@100;200;300;400;500;600;700;800;900&family=JetBrains+Mono:wght@100;200;300;400;500;600;700;800&display=swap" rel="stylesheet">
-    <script>window.__ULTRA_FAST_VOICE__ = true;</script>
 </head>
 <body>
     <!-- Neural Background -->
@@ -57,21 +44,16 @@
 
         <!-- Holographic Chat Interface -->
         <main class="quantum-main">
-            <!-- Holographic Streaming Subtitles -->
-            <div id="holo-subtitles" class="holo-subtitles-container"></div>
-            
             <!-- Neural Messages Stream -->
             <div id="messages" class="neural-stream">
                 <div class="welcome-matrix">
-                    <div class="holo-card neural-welcome holo-border neural-scan">
+                    <div class="holo-card neural-welcome">
                         <div class="card-glow"></div>
-                        <div class="quantum-field"></div>
-                        <div class="quantum-interference"></div>
                         <div class="neural-header">
-                            <h2 class="matrix-title holo-text">NEURAL VOICE INTERFACE</h2>
+                            <h2 class="matrix-title">NEURAL VOICE INTERFACE</h2>
                             <div class="quantum-line"></div>
                         </div>
-                        <p class="holo-subtitle">Advanced Cloud AI • Quantum Processing</p>
+                        <p class="holo-subtitle">Advanced Offline AI • Quantum Processing</p>
                         
                         <div class="tech-specs">
                             <div class="spec-item vosk">
@@ -80,8 +62,8 @@
                                     <div class="icon-rings"></div>
                                 </div>
                                 <div class="spec-details">
-                                    <span class="spec-name">CLOUDFLARE AI EDGE</span>
-                                    <span class="spec-desc">Global Latency Audio Processing</span>
+                                    <span class="spec-name">VOSK NEURAL STT</span>
+                                    <span class="spec-desc">French Quantum Recognition</span>
                                 </div>
                                 <div class="spec-status active"></div>
                             </div>
@@ -91,7 +73,7 @@
                                     <div class="icon-rings"></div>
                                 </div>
                                 <div class="spec-details">
-                                    <span class="spec-name">Llama-3.1-8b-Instruct</span>
+                                    <span class="spec-name">QWEN3-0.6B LLM</span>
                                     <span class="spec-desc">Quantum Language Matrix</span>
                                 </div>
                                 <div class="spec-status active"></div>
@@ -102,7 +84,7 @@
                                     <div class="icon-rings"></div>
                                 </div>
                                 <div class="spec-details">
-                                    <span class="spec-name">DEEPGRAM AURA TTS</span>
+                                    <span class="spec-name">NEURAL TTS</span>
                                     <span class="spec-desc">Holographic Voice Synthesis</span>
                                 </div>
                                 <div class="spec-status active"></div>
@@ -118,8 +100,7 @@
             </div>
 
             <!-- Quantum Voice Controls -->
-            <div class="quantum-controls holo-reflection">
-                <div class="neural-connections"></div>
+            <div class="quantum-controls">
                 <div class="control-matrix">
                     <button id="recordBtn" class="neural-record-btn">
                         <div class="btn-quantum-bg"></div>
@@ -131,7 +112,7 @@
                         </div>
                         <div class="btn-holo-ring"></div>
                         <div class="btn-text">
-                            <span class="btn-label">CLOUD VOICE</span>
+                            <span class="btn-label">NEURAL VOICE</span>
                             <span class="btn-sublabel">Tap to Activate</span>
                         </div>
                         <div class="btn-particles"></div>
@@ -156,56 +137,7 @@
                         <div class="bar" style="--delay: 0.3s"></div>
                         <div class="bar" style="--delay: 0.4s"></div>
                     </div>
-                    <span class="monitor-label">CLOUD PROCESSING</span>
-                </div>
-            </div>
-
-            <!-- Neural ChatBox Testing Interface -->
-            <div id="neuralChatBox" class="neural-chatbox holo-reflection">
-                <div class="chatbox-header">
-                    <div class="chat-neural-line"></div>
-                    <h3 class="chat-title">
-                        <span class="chat-icon">💬</span>
-                        NEURAL TEXT INTERFACE
-                        <span class="chat-status" id="chatStatus">OFFLINE</span>
-                    </h3>
-                    <button id="chatToggleBtn" class="chat-toggle-btn">
-                        <div class="toggle-core"></div>
-                        <span class="toggle-text">TEST MODE</span>
-                    </button>
-                </div>
-                
-                <div class="chatbox-content" id="chatboxContent">
-                    <div class="neural-messages" id="neuralMessages">
-                        <div class="system-message">
-                            <div class="message-avatar system">🤖</div>
-                            <div class="message-bubble system">
-                                <span class="message-text">Neural Text Interface initialisé • Testez votre modèle LLM ici</span>
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <div class="neural-input-zone">
-                        <div class="input-neural-bg"></div>
-                        <div class="input-container">
-                            <textarea 
-                                id="neuralInput" 
-                                placeholder="Tapez votre message pour tester le modèle..."
-                                class="neural-textarea"
-                                rows="2"
-                            ></textarea>
-                            <button id="neuralSendBtn" class="neural-send-btn" disabled>
-                                <div class="send-core">
-                                    <span class="send-icon">⚡</span>
-                                </div>
-                                <div class="send-glow"></div>
-                            </button>
-                        </div>
-                        <div class="input-status" id="inputStatus">
-                            <span class="status-indicator"></span>
-                            <span class="status-text">Prêt à envoyer</span>
-                        </div>
-                    </div>
+                    <span class="monitor-label">QUANTUM PROCESSING</span>
                 </div>
             </div>
         </main>
@@ -221,16 +153,6 @@
     </div>
 
     <!-- Scripts -->
-    <script src="neural-effects.js?v=20260824v5"></script>
-    <script type="module" src="webapp.js?v=20260824v5"></script>
-    <script>
-        if ('serviceWorker' in navigator) {
-            window.addEventListener('load', () => {
-                navigator.serviceWorker.register('sw.js').then(reg => {
-                    console.log('SW registered:', reg.scope);
-                }).catch(err => console.error('SW error:', err));
-            });
-        }
-    </script>
+    <script type="module" src="webapp.js"></script>
 </body>
 </html>

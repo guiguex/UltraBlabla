@@ -1,0 +1,59 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "type": "command",
+        "command": "serena-hooks activate --client=claude-code",
+        "timeout": 15
+      },
+      {
+        "type": "command",
+        "command": "\"C:\\Users\\utilisateur\\.claude\\scripts\\session-banner.sh\"",
+        "timeout": 3
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "type": "command",
+        "command": "\"C:\\Users\\utilisateur\\.claude\\scripts\\ultracode-context.sh\"",
+        "timeout": 3
+      }
+    ],
+    "PreToolUse": [
+      {
+        "type": "command",
+        "command": "serena-hooks remind --client=claude-code",
+        "timeout": 5
+      },
+      {
+        "type": "command",
+        "command": "serena-hooks auto-approve --client=claude-code",
+        "timeout": 5,
+        "matcher": "mcp__serena__*"
+      }
+    ],
+    "PostToolUse": [
+      {
+        "type": "command",
+        "command": "\"C:\\Users\\utilisateur\\.claude\\scripts\\format-and-fix.sh\"",
+        "timeout": 35,
+        "matcher": "Write|Edit|MultiEdit",
+        "statusMessage": "auto-format & fix"
+      }
+    ],
+    "Stop": [
+      {
+        "type": "command",
+        "command": "\"C:\\Users\\utilisateur\\.claude\\scripts\\stop-banner.sh\"",
+        "timeout": 5
+      }
+    ],
+    "SessionEnd": [
+      {
+        "type": "command",
+        "command": "serena-hooks cleanup --client=claude-code",
+        "timeout": 15
+      }
+    ]
+  }
+}

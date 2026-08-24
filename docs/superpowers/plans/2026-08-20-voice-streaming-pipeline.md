@@ -246,7 +246,7 @@ describe('Vad', () => {
     v.push(0.05, 0);
     v.push(0.05, 800);           // -> speech
     expect(v.push(0.0, 1000)).toBe('speech');
-    expect(v.push(0.0, 2200)).toBe('silence'); // 1500ms after last speech at t≈801
+    expect(v.push(0.0, 2300)).toBe('silence'); // 1500ms after last speech at t=800
   });
 
   it('caps speech at 5000ms even with continuous noise', () => {
@@ -310,6 +310,11 @@ export class Vad {
     if (isSpeechFrame) {
       if (this.speechStartedAt === null) this.speechStartedAt = t;
       this.lastSpeechAt = t;
+      // Hard cap applies even during continuous speech (force silence regardless)
+      if ((t - this.speechStartedAt) >= this.hardCapMs) {
+        this.current = 'silence';
+        return 'silence';
+      }
       if (this.current !== 'speech' && (t - this.speechStartedAt) >= this.minSpeechMs) {
         this.current = 'speech';
       }
@@ -393,7 +398,15 @@ function makeMockCtx() {
       return src;
     },
     createGain: () => {
-      const g: any = { gain: { value: 1, linearRampToValueAtTime: () => {} } };
+      const g: any = {
+        gain: {
+          value: 1,
+          linearRampToValueAtTime: () => {},
+          cancelScheduledValues: () => {},
+          setValueAtTime: () => {},
+        },
+        connect: () => {},
+      };
       return g;
     },
     state: 'running',
@@ -409,7 +422,7 @@ describe('AudioChunkPlayer', () => {
   it('schedules chunks at or after currentTime + 20ms', async () => {
     mock.buffers.set('100', 0.5);  // 100 bytes -> 0.5s
     const p = new AudioChunkPlayer(mock.ctx as any);
-    await p.scheduleChunk('A'.repeat(50));    // 100 bytes after b64 decode
+    await p.scheduleChunk(btoa('\0'.repeat(100)));    // valid b64 of 100 bytes
     expect(mock.started[0].start).toBeGreaterThanOrEqual(0.02);
     expect(mock.started[0].dur).toBe(0.5);
   });
@@ -417,9 +430,9 @@ describe('AudioChunkPlayer', () => {
   it('chains chunks gap-less', async () => {
     mock.buffers.set('100', 0.5);
     const p = new AudioChunkPlayer(mock.ctx as any);
-    await p.scheduleChunk('A'.repeat(50));
+    await p.scheduleChunk(btoa('\0'.repeat(100)));
     mock.advance(100);                  // currentTime += 0.1s
-    await p.scheduleChunk('B'.repeat(50));
+    await p.scheduleChunk(btoa('\0'.repeat(100)));
     expect(mock.started[1].start).toBeCloseTo(mock.started[0].start + 0.5, 2);
   });
 
@@ -748,7 +761,7 @@ describe('WsAsrClient', () => {
   it('emits partial events as server messages arrive', async () => {
     const c = new WsAsrClient({ language: 'fr-CA' });
     const partials: string[] = [];
-    c.on('partial', (t) => partials.push(t));
+    c.on('partial', (m) => partials.push(m.text));
     c.start();
     await new Promise(r => queueMicrotask(r));
     lastSocket().recv({ type: 'partial', seq: 1, text: 'bonjour', latency_ms: 50, model: 'nova-3' });
@@ -873,10 +886,13 @@ export class WsAsrClient {
   stop(): Promise<string> {
     if (!this.ws) return Promise.resolve('');
     return new Promise<string>((resolve) => {
-      this.pendingStop = { resolve };
+      const pending = { resolve };
+      this.pendingStop = pending;
       this.ws!.send(JSON.stringify({ type: 'stop' }));
       setTimeout(() => {
-        if (this.pendingStop) { this.pendingStop.resolve(''); this.pendingStop = null; }
+        // Identity guard: only resolve if THIS stop is still the active one.
+        // Prevents stale timers from earlier stop() calls from killing a later one.
+        if (this.pendingStop === pending) { this.pendingStop.resolve(''); this.pendingStop = null; }
       }, this.stopTimeoutMs);
     });
   }

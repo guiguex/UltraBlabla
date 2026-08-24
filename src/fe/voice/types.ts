@@ -17,6 +17,7 @@ export type VoiceAbort = { type: 'abort' };
 export type VoiceClientMsg = VoiceChat | VoiceAbort;
 
 export type VoiceId =
+  | 'guillaume'   | 'remi'        | 'melissa'     | 'emanuelle'
   | 'fr-female-1' | 'fr-female-2' | 'fr-female-3'
   | 'fr-male-1'   | 'fr-male-2'   | 'fr-male-3'
   | 'en-female-1' | 'en-female-2' | 'en-female-3'

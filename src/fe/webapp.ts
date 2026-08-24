@@ -3,7 +3,8 @@
  * 1-Click Zero Friction • Fluid Adaptive VAD • Adapted for Next Gen Design
  */
 import { Capacitor } from '@capacitor/core';
-import { WsAsrClient, WsVoiceClient, AudioChunkPlayer, Vad, startPcmCapture } from './voice/index';
+import { WsAsrClient, WsVoiceClient, AudioChunkPlayer, Vad, startPcmCapture, FallbackTts } from './voice/index';
+import type { VoiceId } from './voice/types';
 
 const IS_WEB = Capacitor.getPlatform() === 'web';
 
@@ -13,7 +14,7 @@ class UltraBlablaLiveApp {
     private state: LiveState = 'idle';
     private audioCtx: AudioContext | null = null;
 
-    // Ultra-fast WS voice path (Task 9, gated by __ULTRA_FAST_VOICE__ — always true as of v1.1.0)
+    // Ultra-fast WS voice path
     private wsAsr?: WsAsrClient;
     private wsVoice?: WsVoiceClient;
     private player?: AudioChunkPlayer;
@@ -32,6 +33,13 @@ class UltraBlablaLiveApp {
     private holoSubtitles!: HTMLElement;
     private holoSubtitlesTimeout: number | null = null;
 
+    // Text Chat Box Elements
+    private chatToggleBtn: HTMLButtonElement | null = null;
+    private chatboxContent: HTMLElement | null = null;
+    private neuralInput: HTMLTextAreaElement | null = null;
+    private neuralSendBtn: HTMLButtonElement | null = null;
+    private chatStatus: HTMLElement | null = null;
+
     constructor() {
         if (typeof window !== 'undefined') {
             document.addEventListener('DOMContentLoaded', () => this.init());
@@ -41,6 +49,7 @@ class UltraBlablaLiveApp {
     private init() {
         this.bindElements();
         this.setupListeners();
+        this.setupChatbox();
         this.updateUI('idle');
 
         if (IS_WEB) {
@@ -74,8 +83,6 @@ class UltraBlablaLiveApp {
     }
 
     private initWebAudioApi() {
-        // audioCtx is used by playChime() to give audible feedback on listen/stop.
-        // The ultra-fast path uses its own AudioContext (created in startListening()).
         try {
             const AudioContextCls = window.AudioContext || (window as any).webkitAudioContext;
             this.audioCtx = new AudioContextCls();
@@ -86,19 +93,14 @@ class UltraBlablaLiveApp {
     }
 
     private async initWebGPU() {
-        // "Tech Next Genre Dernier Cri Ready 2028"
-        // WebGPU / Quantum Canvas Preparation
         if ('gpu' in navigator) {
             try {
                 const adapter = await (navigator as any).gpu.requestAdapter();
-                const device = await adapter.requestDevice();
+                await adapter.requestDevice();
                 console.log('[Web Next-Gen] WebGPU initialisé avec succès ! Prêt pour le Neural Canvas 2028.');
-                // Here we would bind device to a GPUMap or CanvasContext
             } catch (err) {
                 console.warn('[Web Next-Gen] Echec WebGPU, fallback WebGL:', err);
             }
-        } else {
-            console.log('[Web Next-Gen] WebGPU non supporté par ce navigateur.');
         }
     }
 
@@ -131,6 +133,133 @@ class UltraBlablaLiveApp {
         });
     }
 
+    private setupChatbox() {
+        this.chatToggleBtn = document.getElementById('chatToggleBtn') as HTMLButtonElement;
+        this.chatboxContent = document.getElementById('chatboxContent') as HTMLElement;
+        this.neuralInput = document.getElementById('neuralInput') as HTMLTextAreaElement;
+        this.neuralSendBtn = document.getElementById('neuralSendBtn') as HTMLButtonElement;
+        this.chatStatus = document.getElementById('chatStatus') as HTMLElement;
+
+        if (this.chatStatus) {
+            this.chatStatus.textContent = 'ONLINE • CLOUD AI';
+            this.chatStatus.style.color = '#10b981';
+        }
+
+        this.chatToggleBtn?.addEventListener('click', () => {
+            if (this.chatboxContent) {
+                const isCurrentlyHidden = this.chatboxContent.style.display === 'none' || !this.chatboxContent.classList.contains('active');
+                if (isCurrentlyHidden) {
+                    this.chatboxContent.style.display = 'block';
+                    this.chatboxContent.classList.add('active');
+                } else {
+                    this.chatboxContent.style.display = 'none';
+                    this.chatboxContent.classList.remove('active');
+                }
+            }
+        });
+
+        this.neuralInput?.addEventListener('input', () => {
+            const hasText = !!this.neuralInput?.value.trim();
+            if (this.neuralSendBtn) this.neuralSendBtn.disabled = !hasText;
+        });
+
+        this.neuralInput?.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                this.sendTextMessage();
+            }
+        });
+
+        this.neuralSendBtn?.addEventListener('click', () => {
+            this.sendTextMessage();
+        });
+    }
+
+    private async sendTextMessage() {
+        const text = this.neuralInput?.value.trim();
+        if (!text) return;
+        if (this.neuralInput) this.neuralInput.value = '';
+        if (this.neuralSendBtn) this.neuralSendBtn.disabled = true;
+
+        this.addMessage('VOUS', text, 'user');
+        this.updateUI('thinking');
+
+        if (!this.player) {
+            const AudioContextCls = window.AudioContext || (window as any).webkitAudioContext;
+            const ctx = new AudioContextCls({ sampleRate: 48000 });
+            if (ctx.state === 'suspended') await ctx.resume();
+            this.player = new AudioChunkPlayer(ctx);
+        }
+
+        if (!this.wsVoice) {
+            this.wsVoice = new WsVoiceClient();
+            this.setupVoiceClientListeners();
+        }
+
+        this.wsVoice.chat(text, { voice: this.currentVoice() });
+    }
+
+    private setupVoiceClientListeners() {
+        if (!this.wsVoice) return;
+
+        let responseReceived = false;
+        let responseText = '';
+
+        this.wsVoice.on('ready', () => {
+            responseText = '';
+            responseReceived = false;
+        });
+
+        this.wsVoice.on('token', (msg) => {
+            responseText += msg.content;
+            this.streamHoloSubtitle(responseText, 3000);
+        });
+
+        this.wsVoice.on('audio', (msg) => {
+            responseReceived = true;
+            this.updateUI('speaking');
+            this.player?.scheduleChunk(msg.data).catch(console.error);
+        });
+
+        this.wsVoice.on('done', (msg) => {
+            console.info('voice_ttfa:', msg.ttfa_ms);
+            const finalContent = msg.content || responseText;
+            if (finalContent.trim()) {
+                this.addMessage('GUILLAUME', finalContent, 'ai');
+            }
+            // If server finished but sent no audio (or error occurred), fallback to Google Web Speech / Capacitor
+            if (!responseReceived && finalContent.trim()) {
+                this.updateUI('speaking');
+                FallbackTts.speak(finalContent, {
+                    voice: this.currentVoice(),
+                    onStart: () => this.updateUI('speaking'),
+                    onEnd: () => this.updateUI('idle'),
+                    onError: () => this.updateUI('idle'),
+                }).catch(console.error);
+            }
+        });
+
+        this.wsVoice.on('error', (msg) => {
+            this.showError(`TTS: ${msg.message}`);
+            if (responseText.trim() && !responseReceived) {
+                this.addMessage('GUILLAUME', responseText, 'ai');
+                this.updateUI('speaking');
+                FallbackTts.speak(responseText, {
+                    voice: this.currentVoice(),
+                    onStart: () => this.updateUI('speaking'),
+                    onEnd: () => this.updateUI('idle'),
+                }).catch(console.error);
+            } else {
+                this.updateUI('idle');
+            }
+        });
+
+        this.audioEndUnsub?.();
+        this.audioEndUnsub = this.player?.onEnd(() => {
+            this.updateUI('idle');
+        });
+    }
+
     private async toggleLiveSession() {
         if (this.state === 'speaking') {
             // Barge-in instantané
@@ -140,7 +269,8 @@ class UltraBlablaLiveApp {
         }
 
         if (this.state === 'listening') {
-            this.stopListening();
+            // Utilisateur clique pour arrêter de parler et lancer la réponse
+            void this.finishUtterance();
             return;
         }
 
@@ -148,118 +278,104 @@ class UltraBlablaLiveApp {
             return;
         }
 
-        // Start Live Session
+        // Démarrer l'écoute en direct
         await this.startListening();
     }
 
-    // ----------------------------------------------------------------
-    // Ultra-fast WS voice path (Task 9). The only voice path in v1.1.0.
-    // ----------------------------------------------------------------
-
     private async startListening() {
-        // Task 5 carry-forward: 48 kHz context avoids 44.1 kHz pitch shift
-        // (Math.round(2.75)=3 ⇒ ~14.7 kHz effective at 48 k → wrong rate).
-        const AudioContextCls = window.AudioContext || (window as any).webkitAudioContext;
-        const ctx = new AudioContextCls({ sampleRate: 48000 });
-        if (ctx.state === 'suspended') await ctx.resume();
+        try {
+            const AudioContextCls = window.AudioContext || (window as any).webkitAudioContext;
+            const ctx = new AudioContextCls({ sampleRate: 48000 });
+            if (ctx.state === 'suspended') await ctx.resume();
 
-        const stream = await navigator.mediaDevices.getUserMedia({
-            audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true },
-            video: false,
-        });
-        const source = ctx.createMediaStreamSource(stream);
+            const stream = await navigator.mediaDevices.getUserMedia({
+                audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true },
+                video: false,
+            });
+            const source = ctx.createMediaStreamSource(stream);
 
-        this.vad = new Vad();
-        this.player = new AudioChunkPlayer(ctx);
-        this.wsAsr = new WsAsrClient({ language: 'fr-CA' });
-        this.wsVoice = new WsVoiceClient();
-        this.asrReady = false;
-        this.lastRms = 0;
+            this.vad = new Vad();
+            this.player = new AudioChunkPlayer(ctx);
+            this.wsAsr = new WsAsrClient({ language: 'fr-CA' });
+            this.wsVoice = new WsVoiceClient();
+            this.asrReady = false;
+            this.lastRms = 0;
 
-        this.wsAsr.on('ready',   () => { this.asrReady = true; });
-        this.wsAsr.on('partial', (msg) => this.streamHoloSubtitle(msg.text, 2000));
-        this.wsAsr.on('error',   (msg) => this.showError(`ASR: ${msg.message}`));
-        this.wsVoice.on('audio', (msg) => {
-            this.updateUI('speaking');
-            this.player?.scheduleChunk(msg.data).catch(console.error);
-        });
-        this.wsVoice.on('done',  (msg) => console.info('voice_ttfa:', msg.ttfa_ms));
-        this.wsVoice.on('error', (msg) => this.showError(`TTS: ${msg.message}`));
+            this.wsAsr.on('ready',   () => { this.asrReady = true; });
+            this.wsAsr.on('partial', (msg) => this.streamHoloSubtitle(msg.text, 2000));
+            this.wsAsr.on('error',   (msg) => this.showError(`ASR: ${msg.message}`));
 
-        this.wsAsr.start();
-        this.updateUI('listening');
-        this.capture = await startPcmCapture({
-            ctx,
-            sourceNode: source,
-            sampleRate: 16000,
-            frameMs: 100,
-            onFrame: (pcm) => this.wsAsr?.sendPcm(pcm),
-            onRms:  (rms) => { this.lastRms = rms; },
-        });
+            this.setupVoiceClientListeners();
 
-        // VAD-driven end of utterance (poll ~10 Hz to match onRms rate)
-        this.vadInterval = setInterval(() => {
-            const state = this.vad?.push(this.lastRms, performance.now());
-            if (state === 'silence') {
-                this.vad?.reset();
-                if (this.vadInterval) { clearInterval(this.vadInterval); this.vadInterval = undefined; }
-                void this.finishUtterance();
-            }
-        }, 100);
+            this.wsAsr.start();
+            this.updateUI('listening');
+            this.capture = await startPcmCapture({
+                ctx,
+                sourceNode: source,
+                sampleRate: 16000,
+                frameMs: 100,
+                onFrame: (pcm) => this.wsAsr?.sendPcm(pcm),
+                onRms:  (rms) => { this.lastRms = rms; },
+            });
+
+            // VAD-driven end of utterance (poll ~10 Hz to match onRms rate)
+            this.vadInterval = setInterval(() => {
+                const state = this.vad?.push(this.lastRms, performance.now());
+                if (state === 'silence') {
+                    this.vad?.reset();
+                    if (this.vadInterval) { clearInterval(this.vadInterval); this.vadInterval = undefined; }
+                    void this.finishUtterance();
+                }
+            }, 100);
+        } catch (err: any) {
+            console.error('[Microphone error]', err);
+            this.showError(`Microphone indisponible: ${err?.message || 'Accès refusé'}`);
+            this.updateUI('idle');
+        }
     }
 
     private async finishUtterance() {
         this.capture?.stop();
-        // Task 6 carry-forward: only call stop() once 'ready' has fired,
-        // otherwise ws.send('stop') throws InvalidStateError (CONNECTING).
-        if (!this.asrReady || !this.wsAsr) {
-            this.wsAsr?.close();
-            return;
-        }
-        const text = await this.wsAsr.stop();
-        // Task 6 carry-forward: pair every wsAsr.start() with wsAsr.close().
-        this.wsAsr.close();
-        if (text.trim().length === 0) {
-            this.restartListening();
-            return;
-        }
-        this.streamHoloSubtitle(text, 2000);
-        this.wsVoice?.chat(text, { voice: this.currentVoice() });
-        // Review fix: reset state to 'idle' when TTS audio playback ends.
-        this.audioEndUnsub?.();
-        this.audioEndUnsub = this.player?.onEnd(() => {
-            this.updateUI('idle');
-        });
-    }
-
-    private stopListening() {
-        // Stop PCM capture worklet
-        this.capture?.stop();
-        // Clear the VAD polling interval
         if (this.vadInterval) {
             clearInterval(this.vadInterval);
             this.vadInterval = undefined;
         }
-        // Close both WS sockets (wsVoice uses abort() per the WsVoiceClient API)
-        try { this.wsAsr?.close(); } catch { /* ignore */ }
-        try { this.wsVoice?.abort(); } catch { /* ignore */ }
-        // Stop audio player if mid-playback
-        try { this.player?.stop(); } catch { /* ignore */ }
-        // Drop the onEnd subscription so it can't fire after a manual stop
+
+        let text = '';
+        if (this.asrReady && this.wsAsr) {
+            text = await this.wsAsr.stop();
+        }
+        this.wsAsr?.close();
+        this.wsAsr = undefined;
+
+        if (!text || text.trim().length === 0) {
+            this.updateUI('idle');
+            return;
+        }
+
+        this.addMessage('VOUS', text, 'user');
+        this.updateUI('thinking');
+        this.streamHoloSubtitle(text, 2000);
+        this.wsVoice?.chat(text, { voice: this.currentVoice() });
+    }
+
+    private stopListening() {
+        this.capture?.stop();
+        if (this.vadInterval) {
+            clearInterval(this.vadInterval);
+            this.vadInterval = undefined;
+        }
+        try { this.wsAsr?.close(); } catch {}
+        try { this.wsVoice?.abort(); } catch {}
+        try { this.player?.stop(); } catch {}
+        FallbackTts.stop();
         this.audioEndUnsub?.();
         this.audioEndUnsub = undefined;
         this.updateUI('idle');
         this.playChime(350, 0.06);
     }
 
-    private restartListening() {
-        // Re-start the ultra-fast listening session. Used by finishUtterance() when
-        // the ASR returned an empty transcript (noise / cough) — re-arm the mic so
-        // the next utterance is captured without requiring a second button press.
-        void this.startListening();
-    }
-
-    private currentVoice(): 'fr-female-1' { return 'fr-female-1'; }
+    private currentVoice(): VoiceId { return 'guillaume'; }
 
     private showError(msg: string) {
         console.error('[voice]', msg);
@@ -267,10 +383,11 @@ class UltraBlablaLiveApp {
     }
 
     private stopSpeaking() {
-        // Stop the ultra-fast audio player if it's mid-playback (used for barge-in).
-        try { this.player?.stop(); } catch { /* ignore */ }
+        try { this.player?.stop(); } catch {}
+        FallbackTts.stop();
         this.audioEndUnsub?.();
         this.audioEndUnsub = undefined;
+        this.updateUI('idle');
     }
 
     private addMessage(speaker: string, text: string, type: 'user' | 'ai' | 'system') {
@@ -281,7 +398,6 @@ class UltraBlablaLiveApp {
         const messageEl = document.createElement('div');
         messageEl.className = `message ${type}-message`;
 
-        // Inline styling to match Next Gen aesthetics for dynamic messages
         messageEl.style.padding = '12px 16px';
         messageEl.style.margin = '10px 0';
         messageEl.style.borderRadius = '12px';
@@ -300,7 +416,7 @@ class UltraBlablaLiveApp {
 
     private clearMessages() {
         if (!this.messages) return;
-        this.messages.innerHTML = `<div class="welcome-matrix"><div class="holo-card neural-welcome holo-border neural-scan"><div class="card-glow"></div><div class="quantum-field"></div><div class="quantum-interference"></div><div class="neural-header"><h2 class="matrix-title holo-text">NEURAL VOICE INTERFACE</h2><div class="quantum-line"></div></div><p class="holo-subtitle">Advanced Cloud AI • Quantum Processing</p><div class="tech-specs"><div class="spec-item vosk"><div class="spec-icon"><div class="icon-core"></div><div class="icon-rings"></div></div><div class="spec-details"><span class="spec-name">CLOUDFLARE AI EDGE</span><span class="spec-desc">Global Latency Audio Processing</span></div><div class="spec-status active"></div></div><div class="spec-item qwen"><div class="spec-icon"><div class="icon-core"></div><div class="icon-rings"></div></div><div class="spec-details"><span class="spec-name">Llama-3.1-8b-Instruct</span><span class="spec-desc">Quantum Language Matrix</span></div><div class="spec-status active"></div></div><div class="spec-item tts"><div class="spec-icon"><div class="icon-core"></div><div class="icon-rings"></div></div><div class="spec-details"><span class="spec-name">DEEPGRAM AURA TTS</span><span class="spec-desc">Holographic Voice Synthesis</span></div><div class="spec-status active"></div></div></div><div class="quantum-prompt"><div class="prompt-glow"></div><span>ACTIVATE NEURAL INTERFACE TO BEGIN</span></div></div></div>`;
+        this.messages.innerHTML = `<div class="welcome-matrix"><div class="holo-card neural-welcome holo-border neural-scan"><div class="card-glow"></div><div class="quantum-field"></div><div class="quantum-interference"></div><div class="neural-header"><h2 class="matrix-title holo-text">NEURAL VOICE INTERFACE</h2><div class="quantum-line"></div></div><p class="holo-subtitle">Advanced Cloud AI • Quantum Processing</p><div class="tech-specs"><div class="spec-item vosk"><div class="spec-icon"><div class="icon-core"></div><div class="icon-rings"></div></div><div class="spec-details"><span class="spec-name">CLOUDFLARE AI EDGE</span><span class="spec-desc">Global Latency Audio Processing</span></div><div class="spec-status active"></div></div><div class="spec-item qwen"><div class="spec-icon"><div class="icon-core"></div><div class="icon-rings"></div></div><div class="spec-details"><span class="spec-name">Kimi K2.7 / Qwen Neural</span><span class="spec-desc">Quantum Language Matrix</span></div><div class="spec-status active"></div></div><div class="spec-item tts"><div class="spec-icon"><div class="icon-core"></div><div class="icon-rings"></div></div><div class="spec-details"><span class="spec-name">QWEN CLONED TTS + GOOGLE FALLBACK</span><span class="spec-desc">Guillaume Voice Synthesis</span></div><div class="spec-status active"></div></div></div><div class="quantum-prompt"><div class="prompt-glow"></div><span>CLIQUEZ SUR LE BOUTON POUR COMMENCER</span></div></div></div>`;
     }
 
     private streamHoloSubtitle(text: string, durationEstimateMs: number) {
@@ -317,21 +433,19 @@ class UltraBlablaLiveApp {
         const chars = text.split('');
         let i = 0;
 
-        // Environ 15 à 30ms par caractère pour un effet fluide "Next Gen"
         const charDelay = Math.min(30, Math.max(10, durationEstimateMs / (chars.length || 1)));
 
         const streamInterval = setInterval(() => {
             if (i >= chars.length) {
                 clearInterval(streamInterval);
 
-                // Garde le texte affiché un court instant après avoir fini de l'écrire, puis disparaît
                 this.holoSubtitlesTimeout = window.setTimeout(() => {
                     this.holoSubtitles.classList.add('fade-out');
                     setTimeout(() => {
                         if (this.holoSubtitles.classList.contains('fade-out')) {
                             this.holoSubtitles.innerHTML = '';
                         }
-                    }, 2000); // Attendre la fin de la transition CSS (2s)
+                    }, 2000);
                 }, Math.max(1500, durationEstimateMs - (chars.length * charDelay) + 500));
 
                 return;
@@ -363,19 +477,19 @@ class UltraBlablaLiveApp {
             case 'listening':
                 if (this.status) this.status.textContent = '👂 À l\'écoute... (parlez naturellement)';
                 if (btnLabel) btnLabel.textContent = 'LISTENING';
-                if (btnSublabel) btnSublabel.textContent = 'Tap to Stop';
+                if (btnSublabel) btnSublabel.textContent = 'Tap to Stop & Send';
                 this.recordBtn?.classList.add('voice-active');
                 this.recordBtn?.classList.remove('processing', 'speaking');
                 break;
             case 'thinking':
-                if (this.status) this.status.textContent = '🧠 Traitement...';
+                if (this.status) this.status.textContent = '🧠 Traitement IA...';
                 if (btnLabel) btnLabel.textContent = 'THINKING';
                 if (btnSublabel) btnSublabel.textContent = 'Processing...';
                 this.recordBtn?.classList.add('processing');
                 this.recordBtn?.classList.remove('voice-active', 'speaking');
                 break;
             case 'speaking':
-                if (this.status) this.status.textContent = '🎙️ IA parle... (touchez pour interrompre)';
+                if (this.status) this.status.textContent = '🎙️ Guillaume parle... (touchez pour interrompre)';
                 if (btnLabel) btnLabel.textContent = 'SPEAKING';
                 if (btnSublabel) btnSublabel.textContent = 'Tap to Stop';
                 this.recordBtn?.classList.add('speaking');
@@ -397,7 +511,7 @@ class UltraBlablaLiveApp {
             gain.connect(this.audioCtx.destination);
             osc.start();
             osc.stop(this.audioCtx.currentTime + duration);
-        } catch { /* ignore */ }
+        } catch {}
     }
 }
 

@@ -279,10 +279,38 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
     
-    // Status indicator initialized by webapp
+    // Add typing effect to status text
     const statusText = document.querySelector('.status-text');
-    if (statusText && !statusText.textContent) {
-        statusText.textContent = 'PRÊT • 100% CLOUD AI';
+    if (statusText) {
+        const messages = [
+            'NEURAL LINK INITIALIZING...',
+            'QUANTUM PROCESSORS ONLINE...',
+            'VOICE MATRIX CALIBRATED...',
+            'AI SYSTEMS READY...',
+            'NEURAL INTERFACE ACTIVE'
+        ];
+        
+        let messageIndex = 0;
+        let charIndex = 0;
+        let currentMessage = '';
+        
+        const typeMessage = () => {
+            if (charIndex < messages[messageIndex].length) {
+                currentMessage += messages[messageIndex][charIndex];
+                statusText.textContent = currentMessage;
+                charIndex++;
+                setTimeout(typeMessage, 50);
+            } else {
+                setTimeout(() => {
+                    messageIndex = (messageIndex + 1) % messages.length;
+                    charIndex = 0;
+                    currentMessage = '';
+                    setTimeout(typeMessage, 1000);
+                }, 2000);
+            }
+        };
+        
+        setTimeout(typeMessage, 1000);
     }
     
     // Quantum particles for tech specs

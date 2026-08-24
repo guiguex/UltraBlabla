@@ -1,7 +1,8 @@
 const SCHEDULE_MARGIN_S = 0.02; // 20 ms safety margin
 
 function base64ToBytes(b64: string): Uint8Array {
-  const bin = atob(b64);
+  const clean = b64.includes(',') ? b64.split(',')[1] : b64;
+  const bin = atob(clean);
   const out = new Uint8Array(bin.length);
   for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
   return out;
@@ -22,10 +23,31 @@ export class AudioChunkPlayer {
     if (this.ctx.state === 'suspended') this.ctx.resume();
   }
 
-  async scheduleChunk(b64: string): Promise<void> {
+  async scheduleChunk(b64: string, sampleRate = 24000, channels = 1): Promise<void> {
+    if (!b64 || !b64.trim()) return;
     const bytes = base64ToBytes(b64);
-    // Slice the buffer so decodeAudioData can detach its source (Chromium requirement).
-    const buf = await this.ctx.decodeAudioData(bytes.buffer.slice(0) as ArrayBuffer);
+    if (bytes.length === 0) return;
+
+    let buf: AudioBuffer;
+
+    // Check if it's a RIFF/WAV or MP3/OGG container (RIFF = 'RIFF', ID3 = 'ID3', OGG = 'OggS')
+    const isRiff = bytes.length >= 4 && bytes[0] === 0x52 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x46;
+    const isId3 = bytes.length >= 3 && bytes[0] === 0x49 && bytes[1] === 0x44 && bytes[2] === 0x33;
+    const isOgg = bytes.length >= 4 && bytes[0] === 0x4F && bytes[1] === 0x67 && bytes[2] === 0x67 && bytes[3] === 0x53;
+
+    if (isRiff || isId3 || isOgg) {
+      try {
+        buf = await this.ctx.decodeAudioData(bytes.buffer.slice(0) as ArrayBuffer);
+      } catch (e) {
+        console.warn('[AudioChunkPlayer] Container decode failed, falling back to PCM:', e);
+        buf = this.decodeRawPcm(bytes, sampleRate, channels);
+      }
+    } else {
+      // Raw Int16 PCM (24kHz / 16kHz)
+      buf = this.decodeRawPcm(bytes, sampleRate, channels);
+    }
+
+    if (!buf || buf.length === 0) return;
 
     const startAt = Math.max(this.nextStartTime, this.ctx.currentTime + SCHEDULE_MARGIN_S);
     const src = this.ctx.createBufferSource();
@@ -42,6 +64,23 @@ export class AudioChunkPlayer {
     this.sources.push(src);
     this.nextStartTime = startAt + buf.duration;
     this.playing = true;
+  }
+
+  private decodeRawPcm(bytes: Uint8Array, sampleRate: number, channels: number): AudioBuffer {
+    const numSamples = Math.floor(bytes.byteLength / (2 * channels));
+    const buf = this.ctx.createBuffer(channels, numSamples, sampleRate);
+    const dataView = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    for (let ch = 0; ch < channels; ch++) {
+      const channelData = buf.getChannelData(ch);
+      for (let i = 0; i < numSamples; i++) {
+        const byteOffset = (i * channels + ch) * 2;
+        if (byteOffset + 1 < bytes.byteLength) {
+          const sample = dataView.getInt16(byteOffset, true);
+          channelData[i] = sample < 0 ? sample / 32768 : sample / 32767;
+        }
+      }
+    }
+    return buf;
   }
 
   stop(): void {

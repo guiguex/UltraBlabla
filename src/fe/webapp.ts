@@ -355,10 +355,14 @@ class UltraBlablaLiveApp {
         }
 
         let text = '';
-        if (this.asrReady && this.wsAsr) {
-            text = await this.wsAsr.stop();
+        if (this.wsAsr) {
+            try {
+                text = await this.wsAsr.stop();
+            } catch (err) {
+                console.error('[ASR stop error]', err);
+            }
         }
-        this.wsAsr?.close();
+        try { this.wsAsr?.close(); } catch {}
         this.wsAsr = undefined;
 
         if (!text || text.trim().length === 0) {

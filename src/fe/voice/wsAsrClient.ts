@@ -66,12 +66,22 @@ export class WsAsrClient {
     this.listeners[event].forEach(fn => (fn as any)(...args));
   }
 
+  private pendingPcm: Int16Array[] = [];
+
   start(): void {
     this.seq = 0;
+    this.pendingPcm = [];
     this.ws = new WebSocket(this.url);
     this.ws.onopen = () => {
       const msg: AsrClientMsg = { type: 'start', language: this.language, sample_rate: this.sampleRate };
       this.ws!.send(JSON.stringify(msg));
+      if (this.pendingPcm.length > 0) {
+        for (const pcm of this.pendingPcm) {
+          const frameMsg: AsrPcm = { type: 'pcm', seq: this.seq++, data: toB64(pcm) };
+          this.ws!.send(JSON.stringify(frameMsg));
+        }
+        this.pendingPcm = [];
+      }
     };
     this.ws.onmessage = (ev) => {
       let parsed: AsrServerMsg;
@@ -94,7 +104,11 @@ export class WsAsrClient {
   }
 
   sendPcm(pcm: Int16Array): void {
-    if (!this.ws || this.ws.readyState !== 1) return;
+    if (!this.ws || this.ws.readyState === 0) {
+      this.pendingPcm.push(pcm);
+      return;
+    }
+    if (this.ws.readyState !== 1) return;
     const msg: AsrPcm = { type: 'pcm', seq: this.seq++, data: toB64(pcm) };
     this.ws.send(JSON.stringify(msg));
   }

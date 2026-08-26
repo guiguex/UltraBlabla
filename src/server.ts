@@ -90,6 +90,8 @@ const proxyWithFallback = async (request: Request, localBackend: string, cloudBa
   }
 };
 
+const wsAsrBuffers = new Map<string, Buffer[]>();
+
 const app = new Elysia()
   // ─── Fichiers Statiques & PWA ────────────────────────────────────
   .get('/', async ({ set }) => {
@@ -339,7 +341,8 @@ Jamais de syntaxe Markdown (*, #, tirets), ni d'emojis, ni de robotismes.`;
   // ─── WebSocket: ASR Stream Ultra-Rapide (Local C++ -> Fallback Cloud) ─────
   .ws('/v1/asr/stream', {
     open(ws) {
-      (ws as any).pcmChunks = [];
+      wsAsrBuffers.set(ws.id, []);
+      ws.send(JSON.stringify({ type: 'ready', model: 'qwen3-asr-cuda-cpp' }));
     },
     async message(ws, message: any) {
       let data: any;
@@ -350,19 +353,25 @@ Jamais de syntaxe Markdown (*, #, tirets), ni d'emojis, ni de robotismes.`;
       }
 
       if (data.type === 'start') {
-        (ws as any).pcmChunks = [];
+        wsAsrBuffers.set(ws.id, []);
         ws.send(JSON.stringify({ type: 'ready', model: 'qwen3-asr-cuda-cpp' }));
         return;
       }
 
       if (data.type === 'pcm' && data.data) {
+        let chunks = wsAsrBuffers.get(ws.id);
+        if (!chunks) {
+          chunks = [];
+          wsAsrBuffers.set(ws.id, chunks);
+        }
         const bin = Buffer.from(data.data, 'base64');
-        (ws as any).pcmChunks.push(bin);
+        chunks.push(bin);
         return;
       }
 
       if (data.type === 'stop') {
-        const chunks: Buffer[] = (ws as any).pcmChunks || [];
+        const chunks = wsAsrBuffers.get(ws.id) || [];
+        wsAsrBuffers.delete(ws.id);
         const totalLen = chunks.reduce((acc, c) => acc + c.length, 0);
         const pcmData = Buffer.concat(chunks, totalLen);
 
@@ -419,6 +428,9 @@ Jamais de syntaxe Markdown (*, #, tirets), ni d'emojis, ni de robotismes.`;
 
         ws.send(JSON.stringify({ type: 'final', text: '' }));
       }
+    },
+    close(ws) {
+      wsAsrBuffers.delete(ws.id);
     }
   })
 

@@ -24,18 +24,8 @@ function toB64(pcm: Int16Array): string {
 
 function getDefaultAsrWsUrl(): string {
   if (typeof window === 'undefined') return 'ws://localhost:3000/v1/asr/stream';
-  const hostname = window.location.hostname;
-  const isLocal = hostname === 'localhost' ||
-                  hostname === '127.0.0.1' ||
-                  hostname.startsWith('192.168.') ||
-                  hostname.startsWith('10.') ||
-                  hostname.endsWith('.local') ||
-                  (window.location.port !== '' && window.location.port !== '80' && window.location.port !== '443');
-  if (isLocal) {
-    const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    return `${proto}//${window.location.host}/v1/asr/stream`;
-  }
-  return 'wss://api.guig.dev/v1/asr/stream';
+  const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+  return `${proto}//${window.location.host}/v1/asr/stream`;
 }
 
 export class WsAsrClient {

@@ -7,18 +7,6 @@ const TTS_SIDECAR_URL = (process.env.TTS_SIDECAR_URL || 'http://localhost:5000')
 const AI_API_URL = (process.env.AI_API_URL || 'https://api.guig.dev').replace(/\/+$/, '');
 const PORT = Number(process.env.PORT) || 3000;
 
-// Helper: Headers pour les requêtes Cloudflare
-const getProxyHeaders = (incomingHeaders: any = {}, extraHeaders: Record<string, string> = {}) => {
-  const headers: Record<string, string> = {
-    'Origin': 'https://guig.dev',
-    'User-Agent': 'UltraBlabla-Voice-Matrix/5.0',
-    'Authorization': `Bearer ${process.env.MCP_AUTH_TOKEN || ''}`,
-    ...extraHeaders,
-  };
-  if (incomingHeaders['x-turnstile-token']) headers['X-Turnstile-Token'] = incomingHeaders['x-turnstile-token'];
-  return headers;
-};
-
 // Helper: Générer un WAV Header 16kHz Mono 16-bit
 function createWavHeader(pcmLength: number, sampleRate = 16000, numChannels = 1): Uint8Array {
   const buffer = new ArrayBuffer(44);
@@ -38,6 +26,69 @@ function createWavHeader(pcmLength: number, sampleRate = 16000, numChannels = 1)
   view.setUint32(40, pcmLength, true);
   return new Uint8Array(buffer);
 }
+
+// ─── Proxy Universel avec Priorité Docker C++ & Fallback Cloudflare ─────────
+const proxyWithFallback = async (request: Request, localBackend: string, cloudBackend: string, rewritePath?: string): Promise<Response> => {
+  const incomingHeaders = request.headers;
+  const headers = new Headers(incomingHeaders);
+  headers.delete('host');
+  headers.delete('content-length');
+  headers.delete('connection');
+  headers.delete('keep-alive');
+  headers.delete('transfer-encoding');
+
+  let bodyBuffer: ArrayBuffer | undefined;
+  if (request.method !== 'GET' && request.method !== 'HEAD') {
+    bodyBuffer = await request.arrayBuffer();
+  }
+
+  const url = new URL(request.url);
+  const pathname = rewritePath || url.pathname;
+
+  // 1) Essai Prioritaire Local Docker C++
+  if (localBackend) {
+    try {
+      const localBackendUrl = new URL(localBackend);
+      const targetLocal = `${localBackendUrl.origin}${pathname}${url.search}`;
+      const localRes = await fetch(targetLocal, {
+        method: request.method,
+        headers,
+        body: bodyBuffer,
+        redirect: 'manual',
+        signal: AbortSignal.timeout(5000)
+      });
+      if (localRes.ok) {
+        const resHeaders = new Headers(localRes.headers);
+        resHeaders.set('x-voice-source', 'docker-local-cpp');
+        return new Response(localRes.body, { status: localRes.status, headers: resHeaders });
+      }
+    } catch {}
+  }
+
+  // 2) Fallback Cloudflare
+  try {
+    const cloudBackendUrl = new URL(cloudBackend);
+    const targetCloud = `${cloudBackendUrl.origin}${pathname}${url.search}`;
+    const cloudHeaders = new Headers(headers);
+    cloudHeaders.set('Origin', 'https://guig.dev');
+    cloudHeaders.set('User-Agent', 'UltraBlabla-Voice-Matrix/5.0');
+    if (process.env.MCP_AUTH_TOKEN) {
+      cloudHeaders.set('Authorization', `Bearer ${process.env.MCP_AUTH_TOKEN}`);
+    }
+    const cloudRes = await fetch(targetCloud, {
+      method: request.method,
+      headers: cloudHeaders,
+      body: bodyBuffer,
+      redirect: 'manual',
+      signal: AbortSignal.timeout(8000)
+    });
+    const resHeaders = new Headers(cloudRes.headers);
+    resHeaders.set('x-voice-source', 'cloudflare-cloud');
+    return new Response(cloudRes.body, { status: cloudRes.status, headers: resHeaders });
+  } catch (error: any) {
+    return new Response(JSON.stringify({ error: 'Erreur proxy vocal: ' + error.message }), { status: 500, headers: { 'Content-Type': 'application/json' } });
+  }
+};
 
 const app = new Elysia()
   // ─── Fichiers Statiques & PWA ────────────────────────────────────
@@ -86,179 +137,24 @@ const app = new Elysia()
   }))
   .get('/healthz', () => ({ status: 'ok', uptime: process.uptime() }))
 
-  // ─── Catalogue Voix (Local C++ Prioritaire -> Fallback Cloudflare) ───
-  .get('/api/voice/voices', async ({ headers, set }) => {
-    // 1) Essai local Docker C++
-    try {
-      const localRes = await fetch(`${TTS_BACKEND_URL}/v1/audio/voices`, { signal: AbortSignal.timeout(1500) });
-      if (localRes.ok) {
-        const data = await localRes.json();
-        set.headers['Content-Type'] = 'application/json';
-        set.headers['x-voice-source'] = 'docker-local-cpp';
-        return data;
-      }
-    } catch {}
+  // ─── Routing Voix & TTS ──────────────────────────────────────────
+  .all('/api/voice/voices', ({ request }) => proxyWithFallback(request, TTS_BACKEND_URL, AI_API_URL, '/v1/audio/voices'))
+  .all('/v1/audio/voices', ({ request }) => proxyWithFallback(request, TTS_BACKEND_URL, AI_API_URL, '/v1/audio/voices'))
+  .all('/api/voice/speak', ({ request }) => proxyWithFallback(request, TTS_BACKEND_URL, AI_API_URL, '/v1/audio/speech'))
+  .all('/v1/audio/speech', ({ request }) => proxyWithFallback(request, TTS_BACKEND_URL, AI_API_URL, '/v1/audio/speech'))
 
-    // 2) Fallback Cloudflare
-    try {
-      const cloudRes = await fetch(`${AI_API_URL}/v1/voice/voices`, { headers: getProxyHeaders(headers) });
-      const data = await cloudRes.json();
-      set.headers['Content-Type'] = 'application/json';
-      set.headers['x-voice-source'] = 'cloudflare-cloud';
-      return data;
-    } catch (error: any) {
-      set.status = 500;
-      return { error: 'Erreur Voice Catalog: ' + (error?.message || error) };
-    }
-  })
-  .get('/v1/audio/voices', async ({ headers, set }) => {
-    try {
-      const localRes = await fetch(`${TTS_BACKEND_URL}/v1/audio/voices`, { signal: AbortSignal.timeout(1500) });
-      if (localRes.ok) return new Response(localRes.body, { status: localRes.status, headers: localRes.headers });
-    } catch {}
-    const cloudRes = await fetch(`${AI_API_URL}/v1/voice/voices`, { headers: getProxyHeaders(headers) });
-    return new Response(cloudRes.body, { status: cloudRes.status, headers: cloudRes.headers });
-  })
+  // ─── Routing ASR (Transcription) ─────────────────────────────────
+  .all('/api/voice/transcribe', ({ request }) => proxyWithFallback(request, ASR_BACKEND_URL, AI_API_URL, '/v1/audio/transcriptions'))
+  .all('/v1/audio/transcriptions', ({ request }) => proxyWithFallback(request, ASR_BACKEND_URL, AI_API_URL, '/v1/audio/transcriptions'))
 
-  // ─── Synthèse Vocale TTS (Local C++ 21ms Prioritaire -> Fallback Cloudflare) ───
-  .post('/api/voice/speak', async ({ body, headers, set }) => {
-    const payload = typeof body === 'string' ? JSON.parse(body) : body;
+  // ─── Routing Sidecar Python (Design de Voix & Alignement) ─────────
+  .all('/v1/audio/voice/clone', ({ request }) => proxyWithFallback(request, TTS_SIDECAR_URL, AI_API_URL))
+  .all('/v1/audio/voice/design', ({ request }) => proxyWithFallback(request, TTS_SIDECAR_URL, AI_API_URL))
+  .all('/v1/audio/transcribe_with_alignment', ({ request }) => proxyWithFallback(request, TTS_SIDECAR_URL, AI_API_URL))
 
-    // 1) Essai local Docker C++
-    try {
-      const localRes = await fetch(`${TTS_BACKEND_URL}/v1/audio/speech`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          input: payload.input || payload.text || '',
-          voice: payload.voice || 'guillaume',
-          response_format: payload.response_format || 'wav'
-        }),
-        signal: AbortSignal.timeout(5000)
-      });
-      if (localRes.ok) {
-        const buffer = await localRes.arrayBuffer();
-        set.headers['Content-Type'] = localRes.headers.get('Content-Type') || 'audio/wav';
-        set.headers['x-voice-source'] = 'docker-local-cpp';
-        return new Uint8Array(buffer);
-      }
-    } catch {}
-
-    // 2) Fallback Cloudflare
-    try {
-      const cloudRes = await fetch(`${AI_API_URL}/v1/voice/speak`, {
-        method: 'POST',
-        headers: getProxyHeaders(headers, { 'Content-Type': 'application/json' }),
-        body: JSON.stringify(payload)
-      });
-      if (!cloudRes.ok) throw new Error(`Speak API Cloud error ${cloudRes.status}`);
-      const buffer = await cloudRes.arrayBuffer();
-      set.headers['Content-Type'] = cloudRes.headers.get('Content-Type') || 'audio/mpeg';
-      set.headers['x-voice-source'] = 'cloudflare-cloud';
-      return new Uint8Array(buffer);
-    } catch (error: any) {
-      set.status = 500;
-      return { error: 'Erreur Voice Speak: ' + (error?.message || error) };
-    }
-  })
-  .post('/v1/audio/speech', async ({ request }) => {
-    try {
-      const localRes = await fetch(`${TTS_BACKEND_URL}/v1/audio/speech`, {
-        method: 'POST',
-        headers: request.headers,
-        body: request.body,
-        signal: AbortSignal.timeout(5000)
-      });
-      if (localRes.ok) return new Response(localRes.body, { status: localRes.status, headers: localRes.headers });
-    } catch {}
-    const cloudRes = await fetch(`${AI_API_URL}/v1/voice/speak`, {
-      method: 'POST',
-      headers: request.headers,
-      body: request.body
-    });
-    return new Response(cloudRes.body, { status: cloudRes.status, headers: cloudRes.headers });
-  })
-
-  // ─── Transcription ASR (Local C++ 174ms Prioritaire -> Fallback Cloudflare) ───
-  .post('/api/voice/transcribe', async ({ request, set }) => {
-    // 1) Essai local Docker C++
-    try {
-      const localRes = await fetch(`${ASR_BACKEND_URL}/v1/audio/transcriptions`, {
-        method: 'POST',
-        headers: request.headers,
-        body: request.body,
-        signal: AbortSignal.timeout(6000)
-      });
-      if (localRes.ok) {
-        return new Response(localRes.body, { status: localRes.status, headers: localRes.headers });
-      }
-    } catch {}
-
-    // 2) Fallback Cloudflare
-    try {
-      const cloudRes = await fetch(`${AI_API_URL}/v1/voice/transcribe`, {
-        method: 'POST',
-        headers: getProxyHeaders(request.headers),
-        body: request.body
-      });
-      return new Response(cloudRes.body, { status: cloudRes.status, headers: cloudRes.headers });
-    } catch (error: any) {
-      set.status = 500;
-      return { error: 'Erreur Voice Transcribe: ' + (error?.message || error) };
-    }
-  })
-  .post('/v1/audio/transcriptions', async ({ request }) => {
-    try {
-      const localRes = await fetch(`${ASR_BACKEND_URL}/v1/audio/transcriptions`, {
-        method: 'POST',
-        headers: request.headers,
-        body: request.body,
-        signal: AbortSignal.timeout(6000)
-      });
-      if (localRes.ok) return new Response(localRes.body, { status: localRes.status, headers: localRes.headers });
-    } catch {}
-    const cloudRes = await fetch(`${AI_API_URL}/v1/voice/transcribe`, {
-      method: 'POST',
-      headers: request.headers,
-      body: request.body
-    });
-    return new Response(cloudRes.body, { status: cloudRes.status, headers: cloudRes.headers });
-  })
-
-  // ─── Sidecar Python (Design de Voix & Alignement) ─────────────────
-  .all('/v1/audio/voice/clone', ({ request }) => fetch(`${TTS_SIDECAR_URL}/v1/audio/voice/clone`, { method: request.method, headers: request.headers, body: request.body }))
-  .all('/v1/audio/voice/design', ({ request }) => fetch(`${TTS_SIDECAR_URL}/v1/audio/voice/design`, { method: request.method, headers: request.headers, body: request.body }))
-  .all('/v1/audio/transcribe_with_alignment', ({ request }) => fetch(`${TTS_SIDECAR_URL}/v1/audio/transcribe_with_alignment`, { method: request.method, headers: request.headers, body: request.body }))
-
-  // ─── Chat Completion LLM Proxy ───────────────────────────────────
-  .post('/api/chat', async ({ body, headers, set }) => {
-    try {
-      const payload = typeof body === 'string' ? body : JSON.stringify(body);
-      const response = await fetch(`${AI_API_URL}/v1/chat/completions`, {
-        method: 'POST',
-        headers: getProxyHeaders(headers, { 'Content-Type': 'application/json' }),
-        body: payload
-      });
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`Chat API Error ${response.status}: ${errorText}`);
-      }
-      const data = await response.json();
-      set.headers['Content-Type'] = 'application/json';
-      return data;
-    } catch (error: any) {
-      set.status = 500;
-      return { error: 'Erreur Chat API: ' + (error?.message || error) };
-    }
-  })
-  .post('/v1/chat/completions', async ({ request }) => {
-    const res = await fetch(`${AI_API_URL}/v1/chat/completions`, {
-      method: 'POST',
-      headers: getProxyHeaders(request.headers, { 'Content-Type': 'application/json' }),
-      body: request.body
-    });
-    return new Response(res.body, { status: res.status, headers: res.headers });
-  })
+  // ─── Routing LLM ─────────────────────────────────────────────────
+  .all('/api/chat', ({ request }) => proxyWithFallback(request, '', AI_API_URL, '/v1/chat/completions'))
+  .all('/v1/chat/completions', ({ request }) => proxyWithFallback(request, '', AI_API_URL, '/v1/chat/completions'))
 
   // ─── WebSocket: Voice Stream Ultra-Rapide (Local C++ -> Fallback Cloud) ───
   .ws('/v1/voice/stream', {
@@ -321,7 +217,11 @@ Jamais de syntaxe Markdown (*, #, tirets), ni d'emojis, ni de robotismes.`;
         try {
           const cloudTts = await fetch(`${AI_API_URL}/v1/voice/speak`, {
             method: 'POST',
-            headers: getProxyHeaders({}, { 'Content-Type': 'application/json' }),
+            headers: {
+              'Origin': 'https://guig.dev',
+              'Content-Type': 'application/json',
+              ...(process.env.MCP_AUTH_TOKEN ? { 'Authorization': `Bearer ${process.env.MCP_AUTH_TOKEN}` } : {})
+            },
             body: JSON.stringify({ input: clean, voice: voice }),
             signal: AbortSignal.timeout(5000)
           });
@@ -342,7 +242,11 @@ Jamais de syntaxe Markdown (*, #, tirets), ni d'emojis, ni de robotismes.`;
       try {
         const llmRes = await fetch(`${AI_API_URL}/v1/chat/completions`, {
           method: 'POST',
-          headers: getProxyHeaders({}, { 'Content-Type': 'application/json' }),
+          headers: {
+            'Origin': 'https://guig.dev',
+            'Content-Type': 'application/json',
+            ...(process.env.MCP_AUTH_TOKEN ? { 'Authorization': `Bearer ${process.env.MCP_AUTH_TOKEN}` } : {})
+          },
           body: JSON.stringify({
             model: '@cf/meta/llama-3.1-8b-instruct-fast',
             messages: [
@@ -359,7 +263,11 @@ Jamais de syntaxe Markdown (*, #, tirets), ni d'emojis, ni de robotismes.`;
           // Fallback direct non-stream
           const fallbackRes = await fetch(`${AI_API_URL}/v1/chat/completions`, {
             method: 'POST',
-            headers: getProxyHeaders({}, { 'Content-Type': 'application/json' }),
+            headers: {
+              'Origin': 'https://guig.dev',
+              'Content-Type': 'application/json',
+              ...(process.env.MCP_AUTH_TOKEN ? { 'Authorization': `Bearer ${process.env.MCP_AUTH_TOKEN}` } : {})
+            },
             body: JSON.stringify({
               model: '@cf/meta/llama-3.1-8b-instruct-fast',
               messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userText }],
@@ -494,7 +402,10 @@ Jamais de syntaxe Markdown (*, #, tirets), ni d'emojis, ni de robotismes.`;
           formData.append('file', blob, 'audio.wav');
           const cloudAsr = await fetch(`${AI_API_URL}/v1/voice/transcribe`, {
             method: 'POST',
-            headers: getProxyHeaders(),
+            headers: {
+              'Origin': 'https://guig.dev',
+              ...(process.env.MCP_AUTH_TOKEN ? { 'Authorization': `Bearer ${process.env.MCP_AUTH_TOKEN}` } : {})
+            },
             body: formData,
             signal: AbortSignal.timeout(6000)
           });

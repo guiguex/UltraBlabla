@@ -48,12 +48,15 @@ export class WsAsrClient {
   }
 
   on<E extends keyof EventMap>(event: E, fn: EventMap[E]): () => void {
+    if (!this.listeners[event]) {
+      this.listeners[event] = new Set() as any;
+    }
     this.listeners[event].add(fn);
-    return () => { this.listeners[event].delete(fn); };
+    return () => { this.listeners[event]?.delete(fn); };
   }
 
   private emit<E extends keyof EventMap>(event: E, ...args: Parameters<EventMap[E]>): void {
-    this.listeners[event].forEach(fn => (fn as any)(...args));
+    this.listeners[event]?.forEach(fn => (fn as any)(...args));
   }
 
   private pendingPcm: Int16Array[] = [];

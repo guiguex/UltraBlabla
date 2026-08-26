@@ -12,7 +12,7 @@
         PCM AudioWorklet from a Blob URL (src/fe/voice/pcmWorklet.ts).
       - style-src/font-src cover the Google Fonts <link> tags below.
     -->
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self' https://api.guig.dev wss://api.guig.dev; script-src 'self' 'unsafe-inline' blob: https://static.cloudflareinsights.com; worker-src 'self' blob:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob:; media-src 'self' blob: data:; base-uri 'self'; object-src 'none'">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self' https: wss: ws: blob:; script-src 'self' 'unsafe-inline' blob: https://static.cloudflareinsights.com; worker-src 'self' blob:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob:; media-src 'self' blob: data:; base-uri 'self'; object-src 'none'">
     <title>UltraBlabla • AI Voice Neural Interface</title>
     <link rel="icon" type="image/png" href="icons/icon-32.png">
     <link rel="stylesheet" href="style.css">
@@ -226,12 +226,12 @@
     </div>
 
     <!-- Scripts -->
-    <script src="neural-effects.js?v=20260826v7"></script>
-    <script type="module" src="webapp.js?v=20260826v7"></script>
+    <script src="neural-effects.js?v=20260826v8"></script>
+    <script type="module" src="webapp.js?v=20260826v8"></script>
     <script>
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', () => {
-                navigator.serviceWorker.register('sw.js?v=20260826v7').then(reg => {
+                navigator.serviceWorker.register('sw.js?v=20260826v8').then(reg => {
                     reg.update();
                     console.log('SW registered:', reg.scope);
                 }).catch(err => console.error('SW error:', err));

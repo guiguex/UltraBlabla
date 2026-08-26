@@ -23,7 +23,7 @@ export class WsVoiceClient {
   private url: string;
   private ws: WebSocket | null = null;
   private listeners: { [E in keyof EventMap]: Set<EventMap[E]> } = {
-    ready: new Set(), token: new Set(), audio: new Set(), done: new Set(), error: new Set(),
+    ready: new Set(), token: new Set(), audio: new Set(), done: new Set(), interrupted: new Set(), error: new Set(),
   };
 
   constructor(opts: WsVoiceClientOpts = {}) {
@@ -31,12 +31,15 @@ export class WsVoiceClient {
   }
 
   on<E extends keyof EventMap>(event: E, fn: EventMap[E]): () => void {
+    if (!this.listeners[event]) {
+      this.listeners[event] = new Set() as any;
+    }
     this.listeners[event].add(fn);
-    return () => { this.listeners[event].delete(fn); };
+    return () => { this.listeners[event]?.delete(fn); };
   }
 
   private emit<E extends keyof EventMap>(event: E, ...args: Parameters<EventMap[E]>): void {
-    this.listeners[event].forEach(fn => (fn as any)(...args));
+    this.listeners[event]?.forEach(fn => (fn as any)(...args));
   }
 
   chat(text: string, opts: { voice?: VoiceId; system?: string } = {}): void {

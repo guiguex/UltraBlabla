@@ -4,6 +4,7 @@ import { Elysia } from 'elysia';
 const ASR_BACKEND_URL = (process.env.ASR_BACKEND_URL || 'http://localhost:41238').replace(/\/+$/, '');
 const TTS_BACKEND_URL = (process.env.TTS_BACKEND_URL || 'http://localhost:41237').replace(/\/+$/, '');
 const TTS_SIDECAR_URL = (process.env.TTS_SIDECAR_URL || 'http://localhost:5000').replace(/\/+$/, '');
+const CLASSIFIER_BACKEND_URL = (process.env.CLASSIFIER_BACKEND_URL || 'http://localhost:41239').replace(/\/+$/, '');
 const AI_API_URL = (process.env.AI_API_URL || 'https://api.guig.dev').replace(/\/+$/, '');
 const PORT = Number(process.env.PORT) || 3000;
 
@@ -133,9 +134,10 @@ const app = new Elysia()
       asrLocal: ASR_BACKEND_URL,
       ttsLocal: TTS_BACKEND_URL,
       sidecar: TTS_SIDECAR_URL,
+      classifierLocal: CLASSIFIER_BACKEND_URL,
       cloudFallback: AI_API_URL,
     },
-    features: ['local-qwen-asr-cpp', 'local-tts-server-cpp', 'cloud-fallback', 'pcm-streaming', 'vad']
+    features: ['local-qwen-asr-cpp', 'local-tts-server-cpp', 'local-qwen2-audio-classifier', 'cloud-fallback', 'pcm-streaming', 'vad']
   }))
   .get('/healthz', () => ({ status: 'ok', uptime: process.uptime() }))
 
@@ -148,6 +150,10 @@ const app = new Elysia()
   // ─── Routing ASR (Transcription) ─────────────────────────────────
   .all('/api/voice/transcribe', ({ request }) => proxyWithFallback(request, ASR_BACKEND_URL, AI_API_URL, '/v1/audio/transcriptions'))
   .all('/v1/audio/transcriptions', ({ request }) => proxyWithFallback(request, ASR_BACKEND_URL, AI_API_URL, '/v1/audio/transcriptions'))
+
+  // ─── Routing Détection Vocale & Classification Qwen2-Audio ───────
+  .all('/api/voice/classify', ({ request }) => proxyWithFallback(request, CLASSIFIER_BACKEND_URL, AI_API_URL, '/v1/audio/classify'))
+  .all('/v1/audio/classify', ({ request }) => proxyWithFallback(request, CLASSIFIER_BACKEND_URL, AI_API_URL, '/v1/audio/classify'))
 
   // ─── Routing Sidecar Python (Design de Voix & Alignement) ─────────
   .all('/v1/audio/voice/clone', ({ request }) => proxyWithFallback(request, TTS_SIDECAR_URL, AI_API_URL))

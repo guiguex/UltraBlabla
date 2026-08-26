@@ -28,6 +28,8 @@ class UltraBlablaLiveApp {
     private lastRms = 0;
     private asrReady = false;
     private audioEndUnsub?: () => void;
+    private isAutoConversation = true;
+    private autoRestartTimer: ReturnType<typeof setTimeout> | null = null;
 
     // DOM Elements (Next Gen Design)
     private recordBtn!: HTMLButtonElement;
@@ -179,6 +181,19 @@ class UltraBlablaLiveApp {
         });
     }
 
+    private scheduleAutoRestart(delayMs = 260) {
+        if (this.autoRestartTimer) {
+            clearTimeout(this.autoRestartTimer);
+            this.autoRestartTimer = null;
+        }
+        if (!this.isAutoConversation) return;
+        this.autoRestartTimer = setTimeout(() => {
+            if (this.state === 'idle' && this.isAutoConversation) {
+                void this.startListening();
+            }
+        }, delayMs);
+    }
+
     private async getOrCreateAudioContext(): Promise<AudioContext> {
         if (!this.audioCtx || this.audioCtx.state === 'closed') {
             const AudioContextCls = window.AudioContext || (window as any).webkitAudioContext;
@@ -192,6 +207,7 @@ class UltraBlablaLiveApp {
             this.audioEndUnsub?.();
             this.audioEndUnsub = this.player.onEnd(() => {
                 this.updateUI('idle');
+                this.scheduleAutoRestart(260);
             });
         }
         return this.audioCtx;
@@ -250,43 +266,59 @@ class UltraBlablaLiveApp {
                     FallbackTts.speak(finalContent, {
                         voice: this.currentVoice(),
                         onStart: () => this.updateUI('speaking'),
-                        onEnd: () => this.updateUI('idle'),
-                        onError: () => this.updateUI('idle'),
+                        onEnd: () => {
+                            this.updateUI('idle');
+                            this.scheduleAutoRestart(260);
+                        },
+                        onError: () => {
+                            this.updateUI('idle');
+                            this.scheduleAutoRestart(400);
+                        },
                     }).catch(console.error);
                 } else {
                     this.updateUI('idle');
+                    this.scheduleAutoRestart(200);
                 }
             }
         });
 
         this.wsVoice.on('error', (msg) => {
-            this.showError(`TTS: ${msg.message}`);
+            this.showError(`Voix: ${msg.message}`);
             if (responseText.trim() && !responseReceived) {
                 this.addMessage('GUILLAUME', responseText, 'ai');
                 this.updateUI('speaking');
                 FallbackTts.speak(responseText, {
                     voice: this.currentVoice(),
                     onStart: () => this.updateUI('speaking'),
-                    onEnd: () => this.updateUI('idle'),
-                    onError: () => this.updateUI('idle'),
+                    onEnd: () => {
+                        this.updateUI('idle');
+                        this.scheduleAutoRestart(260);
+                    },
+                    onError: () => {
+                        this.updateUI('idle');
+                        this.scheduleAutoRestart(400);
+                    },
                 }).catch(console.error);
             } else {
                 this.updateUI('idle');
+                this.scheduleAutoRestart(400);
             }
         });
     }
 
     private async toggleLiveSession() {
         if (this.state === 'speaking') {
-            // Barge-in instantané
+            // Barge-in instantané: coupe la voix IA et commence immédiatement à écouter
             this.stopSpeaking();
+            this.isAutoConversation = true;
             void this.startListening();
             return;
         }
 
         if (this.state === 'listening') {
-            // Utilisateur clique pour arrêter de parler et lancer la réponse
-            void this.finishUtterance();
+            // Clic pendant l'écoute: met en pause le mode auto et stoppe l'écoute
+            this.isAutoConversation = false;
+            this.stopListening();
             return;
         }
 
@@ -294,11 +326,17 @@ class UltraBlablaLiveApp {
             return;
         }
 
-        // Démarrer l'écoute en direct
+        // Démarrer la conversation en mode automatique continu
+        this.isAutoConversation = true;
         await this.startListening();
     }
 
     private async startListening() {
+        if (this.autoRestartTimer) {
+            clearTimeout(this.autoRestartTimer);
+            this.autoRestartTimer = null;
+        }
+
         try {
             const ctx = await this.getOrCreateAudioContext();
 
@@ -367,6 +405,7 @@ class UltraBlablaLiveApp {
 
         if (!text || text.trim().length === 0) {
             this.updateUI('idle');
+            this.scheduleAutoRestart(150);
             return;
         }
 
@@ -377,6 +416,10 @@ class UltraBlablaLiveApp {
     }
 
     private stopListening() {
+        if (this.autoRestartTimer) {
+            clearTimeout(this.autoRestartTimer);
+            this.autoRestartTimer = null;
+        }
         this.capture?.stop();
         if (this.vadInterval) {
             clearInterval(this.vadInterval);

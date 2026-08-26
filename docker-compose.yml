@@ -12,6 +12,7 @@ services:
       - ASR_BACKEND_URL=http://qwen-asr:8080
       - TTS_BACKEND_URL=http://qwen-tts:8080
       - TTS_SIDECAR_URL=http://tts-api-sidecar:5000
+      - CLASSIFIER_BACKEND_URL=http://qwen-audio-classifier:8080
       - AI_API_URL=https://api.guig.dev
       - MCP_AUTH_TOKEN=${MCP_AUTH_TOKEN}
     networks:

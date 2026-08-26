@@ -428,7 +428,7 @@ class UltraBlablaLiveApp {
         this.messages.innerHTML = `<div class="welcome-matrix"><div class="holo-card neural-welcome holo-border neural-scan"><div class="card-glow"></div><div class="quantum-field"></div><div class="quantum-interference"></div><div class="neural-header"><h2 class="matrix-title holo-text">NEURAL VOICE INTERFACE</h2><div class="quantum-line"></div></div><p class="holo-subtitle">Advanced Cloud AI • Quantum Processing</p><div class="tech-specs"><div class="spec-item vosk"><div class="spec-icon"><div class="icon-core"></div><div class="icon-rings"></div></div><div class="spec-details"><span class="spec-name">CLOUDFLARE AI EDGE</span><span class="spec-desc">Global Latency Audio Processing</span></div><div class="spec-status active"></div></div><div class="spec-item qwen"><div class="spec-icon"><div class="icon-core"></div><div class="icon-rings"></div></div><div class="spec-details"><span class="spec-name">Kimi K2.7 / Qwen Neural</span><span class="spec-desc">Quantum Language Matrix</span></div><div class="spec-status active"></div></div><div class="spec-item tts"><div class="spec-icon"><div class="icon-core"></div><div class="icon-rings"></div></div><div class="spec-details"><span class="spec-name">QWEN CLONED TTS + GOOGLE FALLBACK</span><span class="spec-desc">Guillaume Voice Synthesis</span></div><div class="spec-status active"></div></div></div><div class="quantum-prompt"><div class="prompt-glow"></div><span>CLIQUEZ SUR LE BOUTON POUR COMMENCER</span></div></div></div>`;
     }
 
-    private streamHoloSubtitle(text: string, durationEstimateMs: number) {
+    private streamHoloSubtitle(text: string, durationEstimateMs = 3000) {
         if (!this.holoSubtitles) return;
 
         if (this.holoSubtitlesTimeout) {
@@ -437,37 +437,16 @@ class UltraBlablaLiveApp {
         }
 
         this.holoSubtitles.classList.remove('fade-out');
-        this.holoSubtitles.innerHTML = '';
+        this.holoSubtitles.textContent = text;
 
-        const chars = text.split('');
-        let i = 0;
-
-        const charDelay = Math.min(30, Math.max(10, durationEstimateMs / (chars.length || 1)));
-
-        const streamInterval = setInterval(() => {
-            if (i >= chars.length) {
-                clearInterval(streamInterval);
-
-                this.holoSubtitlesTimeout = window.setTimeout(() => {
-                    this.holoSubtitles.classList.add('fade-out');
-                    setTimeout(() => {
-                        if (this.holoSubtitles.classList.contains('fade-out')) {
-                            this.holoSubtitles.innerHTML = '';
-                        }
-                    }, 2000);
-                }, Math.max(1500, durationEstimateMs - (chars.length * charDelay) + 500));
-
-                return;
-            }
-
-            const span = document.createElement('span');
-            span.className = 'holo-char';
-            span.textContent = chars[i];
-            if (chars[i] === ' ') span.innerHTML = '&nbsp;';
-
-            this.holoSubtitles.appendChild(span);
-            i++;
-        }, charDelay);
+        this.holoSubtitlesTimeout = window.setTimeout(() => {
+            this.holoSubtitles.classList.add('fade-out');
+            setTimeout(() => {
+                if (this.holoSubtitles && this.holoSubtitles.classList.contains('fade-out')) {
+                    this.holoSubtitles.innerHTML = '';
+                }
+            }, 1000);
+        }, Math.max(2000, durationEstimateMs));
     }
 
     private updateUI(newState: LiveState) {

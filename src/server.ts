@@ -121,6 +121,9 @@ const app = new Elysia()
       };
       if (ext && mimeTypes[ext]) {
         set.headers['Content-Type'] = mimeTypes[ext];
+        if (ext === 'apk') {
+          set.headers['Content-Disposition'] = 'attachment; filename="UltraBlabla.apk"';
+        }
       }
       return file;
     }

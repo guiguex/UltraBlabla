@@ -273,6 +273,49 @@ html, body {
     50% { opacity: 1; transform: translateX(100%); }
 }
 
+.apk-download-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 12px;
+    background: rgba(16, 185, 129, 0.18);
+    border: 1px solid rgba(16, 185, 129, 0.5);
+    border-radius: 20px;
+    color: #10b981;
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    font-weight: 700;
+    text-decoration: none;
+    letter-spacing: 0.08em;
+    position: relative;
+    overflow: hidden;
+    transition: all 0.25s ease;
+    backdrop-filter: blur(10px);
+    cursor: pointer;
+}
+
+.apk-download-btn:hover {
+    background: rgba(16, 185, 129, 0.35);
+    border-color: #10b981;
+    box-shadow: 0 0 16px rgba(16, 185, 129, 0.5);
+    transform: translateY(-1px);
+    color: #ffffff;
+}
+
+.apk-download-btn .apk-icon {
+    font-size: 0.85rem;
+}
+
+.apk-download-btn .apk-glow {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: linear-gradient(90deg, transparent, rgba(16, 185, 129, 0.3), transparent);
+    animation: badge-glow 2.5s ease-in-out infinite;
+}
+
 .status-matrix {
     display: flex;
     align-items: center;

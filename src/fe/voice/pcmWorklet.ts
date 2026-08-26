@@ -80,11 +80,28 @@ export interface PcmCaptureOpts {
 
 export interface PcmCaptureHandle { stop(): void; }
 
-export async function startPcmCapture(opts: PcmCaptureOpts): Promise<PcmCaptureHandle> {
+const loadedWorklets = new WeakSet<AudioContext>();
+
+export async function ensureWorkletLoaded(ctx: AudioContext): Promise<void> {
+  if (loadedWorklets.has(ctx)) return;
   const blob = new Blob([pcmWorkletSource()], { type: 'application/javascript' });
   const url = URL.createObjectURL(blob);
-  await opts.ctx.audioWorklet.addModule(url);
-  URL.revokeObjectURL(url);
+  try {
+    await ctx.audioWorklet.addModule(url);
+    loadedWorklets.add(ctx);
+  } catch (err: any) {
+    if (err?.name === 'NotSupportedError' || (err?.message && err.message.includes('already registered'))) {
+      loadedWorklets.add(ctx);
+    } else {
+      throw err;
+    }
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
+export async function startPcmCapture(opts: PcmCaptureOpts): Promise<PcmCaptureHandle> {
+  await ensureWorkletLoaded(opts.ctx);
 
   const node = new AudioWorkletNode(opts.ctx, 'pcm-16k', {
     numberOfInputs: 1, numberOfOutputs: 0, channelCount: 1,

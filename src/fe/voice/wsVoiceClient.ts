@@ -12,6 +12,22 @@ type EventMap = {
   error: (msg: { message: string }) => void;
 };
 
+function getDefaultVoiceWsUrl(): string {
+  if (typeof window === 'undefined') return 'ws://localhost:3000/v1/voice/stream';
+  const hostname = window.location.hostname;
+  const isLocal = hostname === 'localhost' ||
+                  hostname === '127.0.0.1' ||
+                  hostname.startsWith('192.168.') ||
+                  hostname.startsWith('10.') ||
+                  hostname.endsWith('.local') ||
+                  (window.location.port !== '' && window.location.port !== '80' && window.location.port !== '443');
+  if (isLocal) {
+    const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    return `${proto}//${window.location.host}/v1/voice/stream`;
+  }
+  return 'wss://api.guig.dev/v1/voice/stream';
+}
+
 export class WsVoiceClient {
   private url: string;
   private ws: WebSocket | null = null;
@@ -20,10 +36,7 @@ export class WsVoiceClient {
   };
 
   constructor(opts: WsVoiceClientOpts = {}) {
-    const defaultUrl = typeof window !== 'undefined'
-      ? `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/v1/voice/stream`
-      : 'ws://localhost:3000/v1/voice/stream';
-    this.url = opts.url ?? defaultUrl;
+    this.url = opts.url ?? getDefaultVoiceWsUrl();
   }
 
   on<E extends keyof EventMap>(event: E, fn: EventMap[E]): () => void {

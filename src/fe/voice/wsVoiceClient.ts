@@ -20,7 +20,10 @@ export class WsVoiceClient {
   };
 
   constructor(opts: WsVoiceClientOpts = {}) {
-    this.url = opts.url ?? 'wss://api.guig.dev/v1/voice/stream';
+    const defaultUrl = typeof window !== 'undefined'
+      ? `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/v1/voice/stream`
+      : 'ws://localhost:3000/v1/voice/stream';
+    this.url = opts.url ?? defaultUrl;
   }
 
   on<E extends keyof EventMap>(event: E, fn: EventMap[E]): () => void {

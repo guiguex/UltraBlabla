@@ -35,7 +35,10 @@ export class WsAsrClient {
   private pendingStop: { resolve: (text: string) => void } | null = null;
 
   constructor(opts: WsAsrClientOpts = {}) {
-    this.url = opts.url ?? 'wss://api.guig.dev/v1/asr/stream';
+    const defaultUrl = typeof window !== 'undefined'
+      ? `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/v1/asr/stream`
+      : 'ws://localhost:3000/v1/asr/stream';
+    this.url = opts.url ?? defaultUrl;
     this.language = opts.language ?? 'fr-CA';
     this.sampleRate = opts.sampleRate ?? 16000;
     this.stopTimeoutMs = opts.stopTimeoutMs ?? 5000;

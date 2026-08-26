@@ -36,7 +36,9 @@ const app = new Elysia()
         'html': 'text/html;charset=utf-8',
         'png': 'image/png',
         'ico': 'image/x-icon',
-        'webmanifest': 'application/manifest+json'
+        'webmanifest': 'application/manifest+json',
+        'apk': 'application/vnd.android.package-archive',
+        'aab': 'application/octet-stream'
       };
       if (ext && mimeTypes[ext]) {
         set.headers['Content-Type'] = mimeTypes[ext];

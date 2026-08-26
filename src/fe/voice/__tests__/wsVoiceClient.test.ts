@@ -36,18 +36,20 @@ describe('WsVoiceClient', () => {
   it('emits token + audio + done in order', async () => {
     const c = new WsVoiceClient();
     const order: string[] = [];
+    const formats: string[] = [];
     c.on('ready',  () => order.push('ready'));
     c.on('token',  (t) => order.push(`token:${t.content}`));
-    c.on('audio',  () => order.push('audio'));
+    c.on('audio',  (a) => { order.push('audio'); formats.push(a.format); });
     c.on('done',   () => order.push('done'));
     c.chat('bonjour');
     await new Promise(r => queueMicrotask(r));
     const s = MockSocket.instances[0];
     s.recv({ type: 'ready' });
     s.recv({ type: 'token', content: 'bon' });
-    s.recv({ type: 'audio', data: 'AAAA', format: 'wav' });
+    s.recv({ type: 'audio', data: 'AAAA', format: 'pcm' });
     s.recv({ type: 'done', content: 'bonjour', ttfa_ms: 850 });
     expect(order).toEqual(['ready', 'token:bon', 'audio', 'done']);
+    expect(formats).toEqual(['pcm']);
   });
 
   it('abort() closes the socket', async () => {

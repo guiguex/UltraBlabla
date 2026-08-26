@@ -7,7 +7,7 @@ export interface WsVoiceClientOpts {
 type EventMap = {
   ready: () => void;
   token: (msg: { content: string }) => void;
-  audio: (msg: { data: string; format: 'wav' }) => void;
+  audio: (msg: { data: string; format: 'wav' | 'pcm' }) => void;
   done:  (msg: { content: string; ttfa_ms: number }) => void;
   error: (msg: { message: string }) => void;
 };
@@ -54,12 +54,15 @@ export class WsVoiceClient {
       switch (parsed.type) {
         case 'ready': this.emit('ready'); break;
         case 'token': this.emit('token', { content: parsed.content }); break;
-        case 'audio': this.emit('audio', { data: parsed.data, format: 'wav' }); break;
+        case 'audio': this.emit('audio', { data: parsed.data, format: (parsed as any).format || 'wav' }); break;
         case 'done':  this.emit('done',  { content: parsed.content, ttfa_ms: parsed.ttfa_ms }); break;
         case 'error': this.emit('error', { message: parsed.message }); break;
       }
     };
     this.ws!.onerror = () => this.emit('error', { message: 'ws error' });
+    this.ws!.onclose = () => {
+      this.ws = null;
+    };
   }
 
   abort(): void {

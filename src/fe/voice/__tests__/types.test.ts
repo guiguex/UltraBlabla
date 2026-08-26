@@ -10,6 +10,7 @@ describe('protocol type guards', () => {
 
   it('identifies voice audio', () => {
     expect(isVoiceServerMsg({ type: 'audio', data: 'xx', format: 'wav' })).toBe(true);
+    expect(isVoiceServerMsg({ type: 'audio', data: 'xx', format: 'pcm' })).toBe(true);
     expect(isVoiceServerMsg({ type: 'token', content: 'x' })).toBe(true);
     expect(isVoiceServerMsg({ type: 'nope' })).toBe(false);
   });

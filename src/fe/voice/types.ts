@@ -29,7 +29,7 @@ export type VoiceId =
 // Voice server → client
 export type VoiceReady = { type: 'ready' };
 export type VoiceToken = { type: 'token'; content: string };
-export type VoiceAudio = { type: 'audio'; data: string; format: 'wav' };
+export type VoiceAudio = { type: 'audio'; data: string; format: 'wav' | 'pcm' };
 export type VoiceDone = { type: 'done'; content: string; ttfa_ms: number };
 export type VoiceError = { type: 'error'; message: string };
 export type VoiceServerMsg = VoiceReady | VoiceToken | VoiceAudio | VoiceDone | VoiceError;

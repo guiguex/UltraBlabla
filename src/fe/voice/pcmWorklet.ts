@@ -6,18 +6,24 @@ class PCM16kProcessor extends AudioWorkletProcessor {
     this.ratio = sampleRate / 16000;
     this.buffer = new Float32Array(1600); // 100 ms @ 16k mono
     this.bufferPos = 0;
-    this.frames = 0;
+    this.phase = 0;
+    this.sumSq = 0;
+    this.sampleCount = 0;
     this.lastRmsAt = 0;
   }
   process(inputs) {
     const ch = inputs[0] && inputs[0][0];
-    if (!ch) return true;
-    let sumSq = 0;
+    if (!ch || ch.length === 0) return true;
     for (let i = 0; i < ch.length; i++) {
-      if (this.bufferPos < this.buffer.length && (i % Math.round(this.ratio)) === 0) {
-        this.buffer[this.bufferPos++] = ch[i];
+      this.sumSq += ch[i] * ch[i];
+      this.sampleCount++;
+      this.phase += 1;
+      if (this.phase >= this.ratio) {
+        this.phase -= this.ratio;
+        if (this.bufferPos < this.buffer.length) {
+          this.buffer[this.bufferPos++] = ch[i];
+        }
       }
-      sumSq += ch[i] * ch[i];
     }
     if (this.bufferPos >= this.buffer.length) {
       const int16 = new Int16Array(this.buffer.length);
@@ -28,13 +34,15 @@ class PCM16kProcessor extends AudioWorkletProcessor {
       this.port.postMessage({ kind: 'frame', pcm: int16.buffer }, [int16.buffer]);
       this.bufferPos = 0;
     }
-    // RMS at ~10 Hz
+    // RMS at ~10 Hz (accumulated continuously over the window)
     const now = currentFrame / sampleRate;
-    if (now - this.lastRmsAt >= 0.1) {
+    if (now - this.lastRmsAt >= 0.1 && this.sampleCount > 0) {
       this.lastRmsAt = now;
-      this.port.postMessage({ kind: 'rms', value: Math.sqrt(sumSq / ch.length) });
+      const rms = Math.sqrt(this.sumSq / this.sampleCount);
+      this.port.postMessage({ kind: 'rms', value: rms });
+      this.sumSq = 0;
+      this.sampleCount = 0;
     }
-    this.frames++;
     return true;
   }
 }

@@ -37,7 +37,7 @@ export class AudioChunkPlayer {
 
     if (isRiff || isId3 || isOgg) {
       try {
-        buf = await this.ctx.decodeAudioData(bytes.buffer.slice(0) as ArrayBuffer);
+        buf = await this.ctx.decodeAudioData(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer);
       } catch (e) {
         console.warn('[AudioChunkPlayer] Container decode failed, falling back to PCM:', e);
         buf = this.decodeRawPcm(bytes, sampleRate, channels);
@@ -48,6 +48,10 @@ export class AudioChunkPlayer {
     }
 
     if (!buf || buf.length === 0) return;
+
+    if (this.ctx.state === 'suspended') {
+      try { await this.ctx.resume(); } catch {}
+    }
 
     const startAt = Math.max(this.nextStartTime, this.ctx.currentTime + SCHEDULE_MARGIN_S);
     const src = this.ctx.createBufferSource();

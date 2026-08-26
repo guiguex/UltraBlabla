@@ -175,6 +175,24 @@ class UltraBlablaLiveApp {
         });
     }
 
+    private async getOrCreateAudioContext(): Promise<AudioContext> {
+        if (!this.audioCtx || this.audioCtx.state === 'closed') {
+            const AudioContextCls = window.AudioContext || (window as any).webkitAudioContext;
+            this.audioCtx = new AudioContextCls();
+        }
+        if (this.audioCtx.state === 'suspended') {
+            try { await this.audioCtx.resume(); } catch {}
+        }
+        if (!this.player) {
+            this.player = new AudioChunkPlayer(this.audioCtx);
+            this.audioEndUnsub?.();
+            this.audioEndUnsub = this.player.onEnd(() => {
+                this.updateUI('idle');
+            });
+        }
+        return this.audioCtx;
+    }
+
     private async sendTextMessage() {
         const text = this.neuralInput?.value.trim();
         if (!text) return;
@@ -184,12 +202,7 @@ class UltraBlablaLiveApp {
         this.addMessage('VOUS', text, 'user');
         this.updateUI('thinking');
 
-        if (!this.player) {
-            const AudioContextCls = window.AudioContext || (window as any).webkitAudioContext;
-            const ctx = new AudioContextCls({ sampleRate: 48000 });
-            if (ctx.state === 'suspended') await ctx.resume();
-            this.player = new AudioChunkPlayer(ctx);
-        }
+        await this.getOrCreateAudioContext();
 
         if (!this.wsVoice) {
             this.wsVoice = new WsVoiceClient();
@@ -227,15 +240,18 @@ class UltraBlablaLiveApp {
             if (finalContent.trim()) {
                 this.addMessage('GUILLAUME', finalContent, 'ai');
             }
-            // If server finished but sent no audio (or error occurred), fallback to Google Web Speech / Capacitor
-            if (!responseReceived && finalContent.trim()) {
-                this.updateUI('speaking');
-                FallbackTts.speak(finalContent, {
-                    voice: this.currentVoice(),
-                    onStart: () => this.updateUI('speaking'),
-                    onEnd: () => this.updateUI('idle'),
-                    onError: () => this.updateUI('idle'),
-                }).catch(console.error);
+            if (!responseReceived) {
+                if (finalContent.trim()) {
+                    this.updateUI('speaking');
+                    FallbackTts.speak(finalContent, {
+                        voice: this.currentVoice(),
+                        onStart: () => this.updateUI('speaking'),
+                        onEnd: () => this.updateUI('idle'),
+                        onError: () => this.updateUI('idle'),
+                    }).catch(console.error);
+                } else {
+                    this.updateUI('idle');
+                }
             }
         });
 
@@ -248,15 +264,11 @@ class UltraBlablaLiveApp {
                     voice: this.currentVoice(),
                     onStart: () => this.updateUI('speaking'),
                     onEnd: () => this.updateUI('idle'),
+                    onError: () => this.updateUI('idle'),
                 }).catch(console.error);
             } else {
                 this.updateUI('idle');
             }
-        });
-
-        this.audioEndUnsub?.();
-        this.audioEndUnsub = this.player?.onEnd(() => {
-            this.updateUI('idle');
         });
     }
 
@@ -284,18 +296,15 @@ class UltraBlablaLiveApp {
 
     private async startListening() {
         try {
-            const AudioContextCls = window.AudioContext || (window as any).webkitAudioContext;
-            const ctx = new AudioContextCls({ sampleRate: 48000 });
-            if (ctx.state === 'suspended') await ctx.resume();
+            const ctx = await this.getOrCreateAudioContext();
 
             const stream = await navigator.mediaDevices.getUserMedia({
-                audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true },
+                audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true },
                 video: false,
             });
             const source = ctx.createMediaStreamSource(stream);
 
-            this.vad = new Vad();
-            this.player = new AudioChunkPlayer(ctx);
+            this.vad = new Vad({ minSpeechMs: 300, silenceMs: 800, rmsThreshold: 0.01, hardCapMs: 15000 });
             this.wsAsr = new WsAsrClient({ language: 'fr-CA' });
             this.wsVoice = new WsVoiceClient();
             this.asrReady = false;

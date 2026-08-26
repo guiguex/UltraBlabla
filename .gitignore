@@ -24,3 +24,5 @@ public/vosk-model-small-fr-0.22.zip
 /.firebase
 /.agents
 /.serena
+stress_test_raw_results.json
+test_generated.wav

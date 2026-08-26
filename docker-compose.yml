@@ -6,13 +6,16 @@ services:
     restart: unless-stopped
     ports:
       - "44432:44432"
+    extra_hosts:
+      - "model-runner.docker.internal:host-gateway"
     environment:
       - NODE_ENV=production
       - PORT=44432
       - ASR_BACKEND_URL=http://qwen-asr:8080
       - TTS_BACKEND_URL=http://qwen-tts:8080
       - TTS_SIDECAR_URL=http://tts-api-sidecar:5000
-      - CLASSIFIER_BACKEND_URL=http://qwen-audio-classifier:8080
+      - CLASSIFIER_BACKEND_URL=http://model-runner.docker.internal:12434/engines/v1
+      - CLASSIFIER_MODEL=hf.co/mradermacher/Qwen2-Audio-7B-Instruct-GGUF:Q4_K_M
       - AI_API_URL=https://api.guig.dev
       - MCP_AUTH_TOKEN=${MCP_AUTH_TOKEN}
     networks:

@@ -87,16 +87,33 @@ export class AudioChunkPlayer {
     return buf;
   }
 
+  duck(targetGain = 0.15, fadeMs = 35): void {
+    if (!this.playing) return;
+    const now = this.ctx.currentTime;
+    this.gain.gain.cancelScheduledValues(now);
+    this.gain.gain.setValueAtTime(Math.max(0.01, this.gain.gain.value), now);
+    this.gain.gain.exponentialRampToValueAtTime(Math.max(0.01, targetGain), now + fadeMs / 1000);
+  }
+
+  unduck(fadeMs = 60): void {
+    if (!this.playing) return;
+    const now = this.ctx.currentTime;
+    this.gain.gain.cancelScheduledValues(now);
+    this.gain.gain.setValueAtTime(Math.max(0.01, this.gain.gain.value), now);
+    this.gain.gain.exponentialRampToValueAtTime(1.0, now + fadeMs / 1000);
+  }
+
   stop(): void {
     const now = this.ctx.currentTime;
     this.gain.gain.cancelScheduledValues(now);
-    this.gain.gain.setValueAtTime(this.gain.gain.value, now);
-    this.gain.gain.linearRampToValueAtTime(0.001, now + 0.035);
+    this.gain.gain.setValueAtTime(Math.max(0.001, this.gain.gain.value), now);
+    this.gain.gain.linearRampToValueAtTime(0.0001, now + 0.035);
     setTimeout(() => {
       this.sources.forEach(s => { try { s.stop(); } catch {} });
       this.sources = [];
       this.playing = false;
       this.nextStartTime = 0;
+      this.gain.gain.setValueAtTime(1.0, this.ctx.currentTime);
     }, 40);
   }
 

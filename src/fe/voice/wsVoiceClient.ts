@@ -9,6 +9,7 @@ type EventMap = {
   token: (msg: { content: string }) => void;
   audio: (msg: { data: string; format: 'wav' | 'pcm' }) => void;
   done:  (msg: { content: string; ttfa_ms: number }) => void;
+  interrupted: () => void;
   error: (msg: { message: string }) => void;
 };
 
@@ -72,6 +73,7 @@ export class WsVoiceClient {
         case 'token': this.emit('token', { content: parsed.content }); break;
         case 'audio': this.emit('audio', { data: parsed.data, format: (parsed as any).format || 'wav' }); break;
         case 'done':  this.emit('done',  { content: parsed.content, ttfa_ms: parsed.ttfa_ms }); break;
+        case 'interrupted': this.emit('interrupted'); break;
         case 'error': this.emit('error', { message: parsed.message }); break;
       }
     };
@@ -79,6 +81,12 @@ export class WsVoiceClient {
     this.ws!.onclose = () => {
       this.ws = null;
     };
+  }
+
+  interrupt(): void {
+    if (this.ws && this.ws.readyState === 1) {
+      this.ws.send(JSON.stringify({ type: 'interrupt', timestamp: Date.now() }));
+    }
   }
 
   abort(): void {

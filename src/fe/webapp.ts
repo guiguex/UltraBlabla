@@ -10,8 +10,9 @@ const IS_WEB = Capacitor.getPlatform() === 'web';
 
 type LiveState = 'idle' | 'listening' | 'thinking' | 'speaking';
 
-const FAST_VOICE_SYSTEM_PROMPT = `Tu es UltraBlabla, une IA vocale vive, chaleureuse et naturelle.
-Réponds de manière concise, directe et vivante (1 à 2 phrases courtes à l'oral, ≤ 20 mots).
+const FAST_VOICE_SYSTEM_PROMPT = `Tu es UltraBlabla, une IA vocale ultra-réactive, chaleureuse et naturelle.
+Réponds de manière concise, directe et vivante (1 phrase courte à l'oral, ≤ 15 mots).
+Commence TOUJOURS ta réponse par un mot d'amorce court suivi d'une virgule (ex: "Oui,", "D'accord,", "En fait,", "Absolument,", "Bien sûr,", "Regarde,").
 Jamais de syntaxe Markdown (*, #, tirets), ni d'emojis, ni de robotismes.`;
 
 class UltraBlablaLiveApp {
@@ -30,6 +31,8 @@ class UltraBlablaLiveApp {
     private audioEndUnsub?: () => void;
     private isAutoConversation = true;
     private autoRestartTimer: ReturnType<typeof setTimeout> | null = null;
+    private isDucked = false;
+    private bargeInSpeechStart: number | null = null;
 
     // DOM Elements (Next Gen Design)
     private recordBtn!: HTMLButtonElement;
@@ -254,6 +257,12 @@ class UltraBlablaLiveApp {
             this.player?.scheduleChunk(msg.data).catch(console.error);
         });
 
+        this.wsVoice.on('interrupted', () => {
+            console.log('[Full-Duplex Barge-in] Interruption confirmed by server.');
+            this.stopSpeaking();
+            this.updateUI('listening');
+        });
+
         this.wsVoice.on('done', (msg) => {
             console.info('voice_ttfa:', msg.ttfa_ms);
             const finalContent = msg.content || responseText;
@@ -365,16 +374,55 @@ class UltraBlablaLiveApp {
                 sourceNode: source,
                 sampleRate: 16000,
                 frameMs: 100,
-                onFrame: (pcm) => this.wsAsr?.sendPcm(pcm),
-                onRms:  (rms) => { this.lastRms = rms; },
+                onFrame: (pcm) => {
+                    if (this.state === 'listening') {
+                        this.wsAsr?.sendPcm(pcm);
+                    }
+                },
+                onRms: (rms) => {
+                    this.lastRms = rms;
+
+                    // Full-Duplex Barge-in Acoustique avec Soft Ducking
+                    if (this.state === 'speaking') {
+                        if (rms >= 0.022) {
+                            if (!this.isDucked) {
+                                this.isDucked = true;
+                                this.bargeInSpeechStart = performance.now();
+                                this.player?.duck(0.12, 30);
+                            } else if ((performance.now() - (this.bargeInSpeechStart || 0)) >= 160) {
+                                // Interruption confirmée par parole continue
+                                console.log('[Full-Duplex Barge-in] Interruption utilisateur confirmée.');
+                                this.isDucked = false;
+                                this.bargeInSpeechStart = null;
+                                this.stopSpeaking();
+                                this.wsVoice?.interrupt();
+                                this.updateUI('listening');
+
+                                // Relancer immédiatement un client ASR pour capter la suite
+                                this.wsAsr = new WsAsrClient({ language: 'fr-CA' });
+                                this.wsAsr.on('ready', () => { this.asrReady = true; });
+                                this.wsAsr.on('partial', (msg) => this.streamHoloSubtitle(msg.text, 2000));
+                                this.wsAsr.on('error', (msg) => this.showError(`ASR: ${msg.message}`));
+                                this.wsAsr.start();
+                            }
+                        } else if (rms < 0.015 && this.isDucked) {
+                            if ((performance.now() - (this.bargeInSpeechStart || 0)) < 160) {
+                                // Faux-positif court (toux / mhm / bruit bref) -> rétablir le volume
+                                this.isDucked = false;
+                                this.bargeInSpeechStart = null;
+                                this.player?.unduck(60);
+                            }
+                        }
+                    }
+                },
             });
 
             // VAD-driven end of utterance (poll ~10 Hz to match onRms rate)
             this.vadInterval = setInterval(() => {
+                if (this.state !== 'listening') return;
                 const state = this.vad?.push(this.lastRms, performance.now());
                 if (state === 'silence') {
                     this.vad?.reset();
-                    if (this.vadInterval) { clearInterval(this.vadInterval); this.vadInterval = undefined; }
                     void this.finishUtterance();
                 }
             }, 100);
@@ -386,12 +434,6 @@ class UltraBlablaLiveApp {
     }
 
     private async finishUtterance() {
-        this.capture?.stop();
-        if (this.vadInterval) {
-            clearInterval(this.vadInterval);
-            this.vadInterval = undefined;
-        }
-
         let text = '';
         if (this.wsAsr) {
             try {

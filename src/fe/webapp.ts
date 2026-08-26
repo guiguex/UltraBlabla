@@ -10,6 +10,10 @@ const IS_WEB = Capacitor.getPlatform() === 'web';
 
 type LiveState = 'idle' | 'listening' | 'thinking' | 'speaking';
 
+const FAST_VOICE_SYSTEM_PROMPT = `Tu es UltraBlabla, une IA vocale vive, chaleureuse et naturelle.
+Réponds de manière concise, directe et vivante (1 à 2 phrases courtes à l'oral, ≤ 20 mots).
+Jamais de syntaxe Markdown (*, #, tirets), ni d'emojis, ni de robotismes.`;
+
 class UltraBlablaLiveApp {
     private state: LiveState = 'idle';
     private audioCtx: AudioContext | null = null;
@@ -209,7 +213,7 @@ class UltraBlablaLiveApp {
             this.setupVoiceClientListeners();
         }
 
-        this.wsVoice.chat(text, { voice: this.currentVoice() });
+        this.wsVoice.chat(text, { voice: this.currentVoice(), system: FAST_VOICE_SYSTEM_PROMPT });
     }
 
     private setupVoiceClientListeners() {
@@ -365,7 +369,7 @@ class UltraBlablaLiveApp {
         this.addMessage('VOUS', text, 'user');
         this.updateUI('thinking');
         this.streamHoloSubtitle(text, 2000);
-        this.wsVoice?.chat(text, { voice: this.currentVoice() });
+        this.wsVoice?.chat(text, { voice: this.currentVoice(), system: FAST_VOICE_SYSTEM_PROMPT });
     }
 
     private stopListening() {

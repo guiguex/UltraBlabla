@@ -1,4 +1,5 @@
 import type { VoiceAbort, VoiceChat, VoiceId, VoiceServerMsg } from './types';
+import { ensureSession } from './session';
 
 export interface WsVoiceClientOpts {
   url?: string;
@@ -53,8 +54,18 @@ export class WsVoiceClient {
   }
 
   private _sendChat(text: string, opts: { voice?: VoiceId; system?: string }) {
-    const msg: VoiceChat = { type: 'chat', text, voice: opts.voice, system: opts.system };
-    this.ws!.send(JSON.stringify(msg));
+    // A null session just means this turn runs without shared memory.
+    void ensureSession().then((session) => {
+      const msg: VoiceChat = {
+        type: 'chat',
+        text,
+        voice: opts.voice,
+        system: opts.system,
+        session_id: session?.session_id,
+        session_token: session?.session_token,
+      };
+      this.ws!.send(JSON.stringify(msg));
+    });
   }
 
   private _wireSocket() {

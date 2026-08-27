@@ -12,7 +12,7 @@ export type AsrError = { type: 'error'; message: string };
 export type AsrServerMsg = AsrReady | AsrPartial | AsrFinal | AsrError;
 
 // Voice client → server
-export type VoiceChat = { type: 'chat'; text: string; voice?: VoiceId; system?: string };
+export type VoiceChat = { type: 'chat'; text: string; voice?: VoiceId; system?: string; session_id?: string; session_token?: string };
 export type VoiceAbort = { type: 'abort' };
 export type VoiceClientMsg = VoiceChat | VoiceAbort;
 

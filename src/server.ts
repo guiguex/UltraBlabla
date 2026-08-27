@@ -216,6 +216,60 @@ Jamais de syntaxe Markdown (*, #, tirets), ni d'emojis, ni de robotismes.`;
       let firstAudioSent = false;
       let ttfaMs = 0;
 
+      // Conversation memory lives in the shared api.guig.dev episodic store so
+      // UltraBlabla, guig.dev and audiollm all see the same thread.
+      const sessionId: string = String(data.session_id || '').trim();
+      const sessionToken: string = String(data.session_token || '').trim();
+      let history: Array<{ role: string; content: string }> = [];
+      if (sessionId && sessionToken) {
+        try {
+          const hRes = await fetch(
+            `${AI_API_URL}/v1/memory/messages?session_id=${encodeURIComponent(sessionId)}&limit=10`,
+            {
+              headers: {
+                'Origin': 'https://guig.dev',
+                'Authorization': `Bearer ${sessionToken}`
+              },
+              signal: AbortSignal.timeout(2500)
+            }
+          );
+          if (hRes.ok) {
+            const hJson: any = await hRes.json();
+            if (Array.isArray(hJson?.messages)) history = hJson.messages;
+          }
+        } catch (e: any) {
+          console.warn('[memory] history fetch failed:', e?.message ?? e);
+        }
+      }
+      const threadMessages = [
+        { role: 'system', content: systemPrompt },
+        ...history,
+        { role: 'user', content: userText }
+      ];
+
+      const persistTurn = async (reply: string) => {
+        if (!sessionId || !sessionToken || !reply.trim()) return;
+        try {
+          await fetch(`${AI_API_URL}/v1/memory/messages?session_id=${encodeURIComponent(sessionId)}`, {
+            method: 'POST',
+            headers: {
+              'Origin': 'https://guig.dev',
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${sessionToken}`
+            },
+            body: JSON.stringify({
+              messages: [
+                { role: 'user', content: userText },
+                { role: 'assistant', content: reply }
+              ]
+            }),
+            signal: AbortSignal.timeout(3000)
+          });
+        } catch (e: any) {
+          console.warn('[memory] persist failed:', e?.message ?? e);
+        }
+      };
+
       // Synthèse audio avec priorité Docker C++ puis fallback Cloud
       const synthesizeClause = async (clause: string) => {
         if (abortCtrl.signal.aborted) return;
@@ -285,10 +339,7 @@ Jamais de syntaxe Markdown (*, #, tirets), ni d'emojis, ni de robotismes.`;
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               model: CLASSIFIER_MODEL,
-              messages: [
-                { role: 'system', content: systemPrompt },
-                { role: 'user', content: userText }
-              ],
+              messages: threadMessages,
               stream: true,
               max_tokens: 80,
               temperature: 0.3
@@ -313,10 +364,7 @@ Jamais de syntaxe Markdown (*, #, tirets), ni d'emojis, ni de robotismes.`;
             },
             body: JSON.stringify({
               model: '@cf/zai-org/glm-5.3-flash',
-              messages: [
-                { role: 'system', content: systemPrompt },
-                { role: 'user', content: userText }
-              ],
+              messages: threadMessages,
               stream: true,
               max_tokens: 100,
               temperature: 0.6
@@ -338,7 +386,7 @@ Jamais de syntaxe Markdown (*, #, tirets), ni d'emojis, ni de robotismes.`;
             },
             body: JSON.stringify({
               model: '@cf/zai-org/glm-5.3-flash',
-              messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userText }],
+              messages: threadMessages,
               max_tokens: 60
             }),
             signal: AbortSignal.any([abortCtrl.signal, AbortSignal.timeout(6000)])
@@ -348,6 +396,7 @@ Jamais de syntaxe Markdown (*, #, tirets), ni d'emojis, ni de robotismes.`;
           if (!abortCtrl.signal.aborted) {
             ws.send(JSON.stringify({ type: 'token', content: reply }));
             await synthesizeClause(reply);
+            await persistTurn(reply);
             ws.send(JSON.stringify({ type: 'done', content: reply, ttfa_ms: Date.now() - startMs }));
           }
           activeVoiceStreams.delete(ws.id);
@@ -406,6 +455,7 @@ Jamais de syntaxe Markdown (*, #, tirets), ni d'emojis, ni de robotismes.`;
         }
 
         if (!abortCtrl.signal.aborted) {
+          await persistTurn(fullText.trim());
           ws.send(JSON.stringify({
             type: 'done',
             content: fullText.trim(),

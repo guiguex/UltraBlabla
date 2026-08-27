@@ -27,10 +27,15 @@ describe('WsVoiceClient', () => {
   it('sends chat envelope with voice', async () => {
     const c = new WsVoiceClient();
     c.chat('salut', { voice: 'fr-male-1' });
-    await new Promise(r => queueMicrotask(r));
     const s = MockSocket.instances[0];
+    // The frame goes out once the session mint settles (or fails offline).
+    for (let i = 0; i < 200 && s.sent.length === 0; i++) {
+      await new Promise(r => setTimeout(r, 10));
+    }
     const first = JSON.parse(s.sent[0]);
-    expect(first).toEqual({ type: 'chat', text: 'salut', voice: 'fr-male-1' });
+    expect(first.type).toBe('chat');
+    expect(first.text).toBe('salut');
+    expect(first.voice).toBe('fr-male-1');
   });
 
   it('emits token + audio + done in order', async () => {

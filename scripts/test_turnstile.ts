@@ -12,7 +12,7 @@ async function testTurnstile() {
         'Origin': 'https://guig.dev'
       },
       body: JSON.stringify({
-        model: '@cf/meta/llama-3.1-8b-instruct-fast',
+        model: '@cf/zai-org/glm-5.3-flash',
         messages: [{ role: 'user', content: 'Test' }]
       })
     });
@@ -31,7 +31,7 @@ async function testTurnstile() {
         'X-Turnstile-Token': 'invalid_token_123'
       },
       body: JSON.stringify({
-        model: '@cf/meta/llama-3.1-8b-instruct-fast',
+        model: '@cf/zai-org/glm-5.3-flash',
         messages: [{ role: 'user', content: 'Test' }]
       })
     });

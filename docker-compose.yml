@@ -9,7 +9,7 @@ services:
     extra_hosts:
       - "model-runner.docker.internal:host-gateway"
     environment:
-      - NODE_ENV=production
+      - NODE_ENV=productiox
       - PORT=44432
       - ASR_BACKEND_URL=http://qwen-asr:8080
       - TTS_BACKEND_URL=http://qwen-tts:8080

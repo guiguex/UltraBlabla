@@ -312,7 +312,7 @@ Jamais de syntaxe Markdown (*, #, tirets), ni d'emojis, ni de robotismes.`;
               ...(process.env.MCP_AUTH_TOKEN ? { 'Authorization': `Bearer ${process.env.MCP_AUTH_TOKEN}` } : {})
             },
             body: JSON.stringify({
-              model: '@cf/meta/llama-3.1-8b-instruct-fast',
+              model: '@cf/zai-org/glm-5.3-flash',
               messages: [
                 { role: 'system', content: systemPrompt },
                 { role: 'user', content: userText }
@@ -337,7 +337,7 @@ Jamais de syntaxe Markdown (*, #, tirets), ni d'emojis, ni de robotismes.`;
               ...(process.env.MCP_AUTH_TOKEN ? { 'Authorization': `Bearer ${process.env.MCP_AUTH_TOKEN}` } : {})
             },
             body: JSON.stringify({
-              model: '@cf/meta/llama-3.1-8b-instruct-fast',
+              model: '@cf/zai-org/glm-5.3-flash',
               messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userText }],
               max_tokens: 60
             }),
@@ -488,12 +488,14 @@ Jamais de syntaxe Markdown (*, #, tirets), ni d'emojis, ni de robotismes.`;
           }
         } catch {}
 
-        // 2) Fallback Cloud ASR
+        // 2) Fallback Cloud ASR (OpenAI compatible Whisper)
         try {
           const formData = new FormData();
           const blob = new Blob([fullWav], { type: 'audio/wav' });
           formData.append('file', blob, 'audio.wav');
-          const cloudAsr = await fetch(`${AI_API_URL}/v1/voice/transcribe`, {
+          formData.append('model', 'whisper-1');
+          formData.append('language', 'fr');
+          const cloudAsr = await fetch(`${AI_API_URL}/v1/audio/transcriptions`, {
             method: 'POST',
             headers: {
               'Origin': 'https://guig.dev',

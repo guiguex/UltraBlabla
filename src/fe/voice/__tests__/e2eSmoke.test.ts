@@ -21,7 +21,7 @@ describe('UltraBlabla Smoke & Endpoints Test', () => {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        model: '@cf/moonshotai/kimi-k2.7-code',
+        model: '@cf/zai-org/glm-5.3-flash',
         messages: [{ role: 'user', content: 'Reponds juste OK' }]
       })
     });

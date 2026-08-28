@@ -33,6 +33,10 @@ class UltraBlablaLiveApp {
     private autoRestartTimer: ReturnType<typeof setTimeout> | null = null;
     private isDucked = false;
     private bargeInSpeechStart: number | null = null;
+    // Accumulation PCM pour Qwen2-Audio (limité à 512 KB soit ~16s @ 16kHz mono 16-bit)
+    private pcmFrames: Int16Array[] = [];
+    private pcmByteCount = 0;
+    private static readonly PCM_MAX_BYTES = 512 * 1024;
 
     // DOM Elements (Next Gen Design)
     private recordBtn!: HTMLButtonElement;
@@ -377,6 +381,11 @@ class UltraBlablaLiveApp {
                 onFrame: (pcm) => {
                     if (this.state === 'listening') {
                         this.wsAsr?.sendPcm(pcm);
+                        // Accumuler le PCM pour Qwen2-Audio (enrichissement émotionnel)
+                        if (this.pcmByteCount < UltraBlablaLiveApp.PCM_MAX_BYTES) {
+                            this.pcmFrames.push(pcm);
+                            this.pcmByteCount += pcm.byteLength;
+                        }
                     }
                 },
                 onRms: (rms) => {
@@ -446,15 +455,37 @@ class UltraBlablaLiveApp {
         this.wsAsr = undefined;
 
         if (!text || text.trim().length === 0) {
+            this.pcmFrames = []; this.pcmByteCount = 0;
             this.updateUI('idle');
             this.scheduleAutoRestart(150);
             return;
         }
 
+        // Fusionner les frames PCM en un seul buffer base64 pour Qwen2-Audio
+        let audiob64: string | undefined;
+        if (this.pcmFrames.length > 0) {
+            const totalLen = this.pcmFrames.reduce((acc, f) => acc + f.length, 0);
+            const merged = new Int16Array(totalLen);
+            let offset = 0;
+            for (const frame of this.pcmFrames) {
+                merged.set(frame, offset);
+                offset += frame.length;
+            }
+            const bytes = new Uint8Array(merged.buffer);
+            let bin = '';
+            for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+            audiob64 = btoa(bin);
+        }
+        this.pcmFrames = []; this.pcmByteCount = 0;
+
         this.addMessage('VOUS', text, 'user');
         this.updateUI('thinking');
         this.streamHoloSubtitle(text, 2000);
-        this.wsVoice?.chat(text, { voice: this.currentVoice(), system: FAST_VOICE_SYSTEM_PROMPT });
+        this.wsVoice?.chat(text, {
+            voice: this.currentVoice(),
+            system: FAST_VOICE_SYSTEM_PROMPT,
+            audio: audiob64,   // ← PCM base64 pour Qwen2-Audio
+        });
     }
 
     private stopListening() {
@@ -473,6 +504,8 @@ class UltraBlablaLiveApp {
         FallbackTts.stop();
         this.audioEndUnsub?.();
         this.audioEndUnsub = undefined;
+        // Vider le buffer PCM
+        this.pcmFrames = []; this.pcmByteCount = 0;
         this.updateUI('idle');
         this.playChime(350, 0.06);
     }

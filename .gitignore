@@ -13,7 +13,7 @@ android/app/src/main/cpp/llama.cpp/
 **/*webapp-android*
 
 
-
+.env
 
 public/vosk-model-small-fr-0.22.zip
 .vscode/settings.json
@@ -26,3 +26,7 @@ public/vosk-model-small-fr-0.22.zip
 /.serena
 stress_test_raw_results.json
 test_generated.wav
+models/qwen2-audio-7b-instruct-q4_k_m.gguf
+models/mmproj-qwen2-audio-7b.gguf
+.env
+.env

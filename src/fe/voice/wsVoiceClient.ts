@@ -43,7 +43,7 @@ export class WsVoiceClient {
     this.listeners[event]?.forEach(fn => (fn as any)(...args));
   }
 
-  chat(text: string, opts: { voice?: VoiceId; system?: string } = {}): void {
+  chat(text: string, opts: { voice?: VoiceId; system?: string; audio?: string } = {}): void {
     if (!this.ws || this.ws.readyState !== 1) {
       this.ws = new WebSocket(this.url);
       this.ws.onopen = () => this._sendChat(text, opts);
@@ -53,7 +53,7 @@ export class WsVoiceClient {
     if (!this.ws.onmessage) this._wireSocket();
   }
 
-  private _sendChat(text: string, opts: { voice?: VoiceId; system?: string }) {
+  private _sendChat(text: string, opts: { voice?: VoiceId; system?: string; audio?: string }) {
     // A null session just means this turn runs without shared memory.
     void ensureSession().then((session) => {
       const msg: VoiceChat = {
@@ -61,6 +61,8 @@ export class WsVoiceClient {
         text,
         voice: opts.voice,
         system: opts.system,
+        // PCM base64 pour Qwen2-Audio (enrichissement émotionnel). Optionnel.
+        audio: opts.audio,
         session_id: session?.session_id,
         session_token: session?.session_token,
       };

@@ -1,4 +1,3 @@
-version: '3.8'
 services:
   web:
     build: .
@@ -6,18 +5,65 @@ services:
     restart: unless-stopped
     ports:
       - "44432:44432"
-    extra_hosts:
-      - "model-runner.docker.internal:host-gateway"
     environment:
-      - NODE_ENV=productiox
+      # - NODE_ENV=production
       - PORT=44432
       - ASR_BACKEND_URL=http://qwen-asr:8080
       - TTS_BACKEND_URL=http://qwen-tts:8080
       - TTS_SIDECAR_URL=http://tts-api-sidecar:5000
-      - CLASSIFIER_BACKEND_URL=http://model-runner.docker.internal:12434/engines/v1
-      - CLASSIFIER_MODEL=hf.co/mradermacher/Qwen2-Audio-7B-Instruct-GGUF:Q4_K_M
+      # LLM texte léger (Qwen3-1.7B) reste sur le DMR (≈1.5 GB VRAM)
+      - LLM_BACKEND_URL=http://api.guig.dev/v1
+      - LOCAL_LLM_MODEL=@cf/zai-org/glm-5.3-flash
+      # Qwen2-Audio sur conteneur llama.cpp dédié avec flags GPU optimisés
+      - AUDIO_LLM_URL=http://qwen2-audio-llm:8080/v1
+      - AUDIO_LLM_MODEL=qwen2-audio-7b
       - AI_API_URL=https://api.guig.dev
       - MCP_AUTH_TOKEN=${MCP_AUTH_TOKEN}
+      - AI_API_KEY=${AI_API_KEY}
+      - LLAMA_ARG_FLASH_ATTN=on
+    networks:
+      - ai-network
+
+  # ── Qwen2-Audio : llama.cpp CUDA avec flags VRAM optimisés ──
+  # VRAM cible : ~2.5 GB (au lieu de ~6 GB via DMR boîte noire)
+  #   -ngl 24        : offload 24 couches GPU, reste en RAM CPU (-3.5 GB VRAM)
+  #   --flash-attn   : FlashAttention2 (-20% KV cache)
+  #   --cache-type-k/v q8_0 : KV cache quantifié (-300 MB)
+  #   --ctx-size 1024 : contexte court voice chat (-600 MB vs défaut 8192)
+  #   -b 128         : batch réduit (moins de pic VRAM @ inference)
+  qwen2-audio-llm:
+    image: ghcr.io/ggml-org/llama.cpp:server-cuda
+    container_name: qwen2-audio-llm
+    restart: unless-stopped
+    volumes:
+      # Lie tes modèles locaux au conteneur pour éviter de les copier
+      - ./models:/models:ro  
+    environment:
+      - LLAMA_ARG_FLASH_ATTN=on
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+    command: >
+      --model /models/qwen2-audio-7b-instruct-q4_k_m.gguf
+      --mmproj /models/mmproj-qwen2-audio-7b.gguf
+      --alias qwen2-audio-7b
+      --host 0.0.0.0
+      --port 8080
+      --ctx-size 4096
+      --batch-size 128
+      --parallel 2
+      --cont-batching
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fs http://localhost:8080/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      start_period: 90s
+      retries: 5
     networks:
       - ai-network
 

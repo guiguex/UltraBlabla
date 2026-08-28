@@ -12,7 +12,7 @@ export type AsrError = { type: 'error'; message: string };
 export type AsrServerMsg = AsrReady | AsrPartial | AsrFinal | AsrError;
 
 // Voice client → server
-export type VoiceChat = { type: 'chat'; text: string; voice?: VoiceId; system?: string; session_id?: string; session_token?: string };
+export type VoiceChat = { type: 'chat'; text: string; voice?: VoiceId; system?: string; audio?: string; session_id?: string; session_token?: string };
 export type VoiceAbort = { type: 'abort' };
 export type VoiceClientMsg = VoiceChat | VoiceAbort;
 
@@ -31,8 +31,9 @@ export type VoiceReady = { type: 'ready' };
 export type VoiceToken = { type: 'token'; content: string };
 export type VoiceAudio = { type: 'audio'; data: string; format: 'wav' | 'pcm' };
 export type VoiceDone = { type: 'done'; content: string; ttfa_ms: number };
+export type VoiceInterrupted = { type: 'interrupted' };
 export type VoiceError = { type: 'error'; message: string };
-export type VoiceServerMsg = VoiceReady | VoiceToken | VoiceAudio | VoiceDone | VoiceError;
+export type VoiceServerMsg = VoiceReady | VoiceToken | VoiceAudio | VoiceDone | VoiceInterrupted | VoiceError;
 
 // Type guards
 export function isAsrServerMsg(v: unknown): v is AsrServerMsg {

@@ -226,12 +226,12 @@
     </div>
 
     <!-- Scripts -->
-    <script src="neural-effects.js?v=20260826v8"></script>
-    <script type="module" src="webapp.js?v=20260826v8"></script>
+    <script src="neural-effects.js"></script>
+    <script type="module" src="webapp.js"></script>
     <script>
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', () => {
-                navigator.serviceWorker.register('sw.js?v=20260826v8').then(reg => {
+                navigator.serviceWorker.register('sw.js').then(reg => {
                     reg.update();
                     console.log('SW registered:', reg.scope);
                 }).catch(err => console.error('SW error:', err));

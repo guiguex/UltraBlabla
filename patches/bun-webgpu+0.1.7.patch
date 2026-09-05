@@ -1,0 +1,21 @@
+diff --git a/node_modules/bun-webgpu/index.js b/node_modules/bun-webgpu/index.js
+--- a/node_modules/bun-webgpu/index.js
++++ b/node_modules/bun-webgpu/index.js
+@@ -2502,8 +2502,8 @@ var WGPUBindGroupLayoutEntryStruct = defineStruct([
+   ["nextInChain", "pointer", { optional: true }],
+   ["binding", "u32"],
+   ["visibility", "u64"],
+-  ["_alignment0", "u32", { default: 0, condition: () => process.platform !== "win32" }],
++  ["bindingArraySize", "u32", { default: 0 }],
+   ["buffer", WGPUBufferBindingLayoutStruct, { optional: true }],
+   ["sampler", WGPUSamplerBindingLayoutStruct, { optional: true }],
+   ["texture", WGPUTextureBindingLayoutStruct, { optional: true }],
+@@ -2986,3 +2986,7 @@ var GPUQueueImpl = /** @class */ (function () {
+     this.lib.wgpuQueueSubmit(this.ptr, commandBuffersArray.length, ptr2(handleView.buffer));
+   }
+   onSubmittedWorkDone() {
++    void commandBuffersArray;
++
++    for (const buffer of commandBuffersArray) {
++      buffer._destroy();
++    }

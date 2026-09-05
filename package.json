@@ -8,6 +8,7 @@
     "bun": ">=1.4.0"
   },
   "scripts": {
+    "postinstall": "bun scripts/patch-bun-webgpu.js",
     "dev": "bun run --hot src/server.ts",
     "test": "bun test src/",
     "test:watch": "bun test --watch src/",
@@ -23,12 +24,16 @@
     "@capacitor-community/text-to-speech": "^8.0.2",
     "@capacitor/core": "^8.5.0",
     "@elysiajs/static": "^1.4.10",
-    "elysia": "^1.4.30"
+    "bun-webgpu": "^0.1.7",
+    "elysia": "^1.4.30",
+    "onnxruntime-node": "1.29.0",
+    "onnxruntime-web": "1.29.0"
   },
   "devDependencies": {
     "@capacitor/android": "^8.5.0",
     "@capacitor/cli": "^8.5.0",
-    "typescript": "^7.0.2",
-    "bun-types": "^1.4.0"
+    "bun-types": "^1.4.0",
+    "patch-package": "^8.0.1",
+    "typescript": "^7.0.2"
   }
 }

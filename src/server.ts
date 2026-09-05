@@ -1,4 +1,5 @@
 import { Elysia } from 'elysia';
+import { ser, pcm16leToFloat32, hintFor, EmotionCache, prewarmSer } from './ser/index.js';
 
 // ─── Configuration des Backends (Docker C++ CUDA Local + Fallback Cloudflare) ───
 const ASR_BACKEND_URL = (process.env.ASR_BACKEND_URL || 'http://localhost:41238').replace(/\/+$/, '');
@@ -7,13 +8,16 @@ const TTS_SIDECAR_URL = (process.env.TTS_SIDECAR_URL || 'http://localhost:5000')
 // LLM local léger pour le chat texte (Qwen3-1.7B ≈ 1.2 GB VRAM)
 const LLM_BACKEND_URL = (process.env.LLM_BACKEND_URL || process.env.CLASSIFIER_BACKEND_URL || 'http://api.guig.dev/v1').replace(/\/+$/, '');
 const LOCAL_LLM_MODEL = process.env.LOCAL_LLM_MODEL || process.env.CLASSIFIER_MODEL || '@cf/zai-org/glm-5.3-flash';
-// 2026-08-28: Qwen2-Audio sur conteneur llama.cpp dédié. Pas de fallback Cloudflare
-// (Workers AI n'expose pas ce modèle multimodal audio) — si le container est down,
-// l'enrichissement émotionnel est simplement skippé (non bloquant).
-const AUDIO_LLM_URL = (process.env.AUDIO_LLM_URL || '').replace(/\/+$/, '');
+// 2026-08-29: rebranché — startEmotionExtraction → POST /chat/completions est
+// strictement identique à l'époque Qwen2-Audio (mêmes routes, même format OpenAI
+// multimodal, même prompt FR, même contrat de réponse), mais l'endpoint local
+// sert désormais wav2vec2-lg-xlsr-fr-speech-emotion-recognition (fp16 ONNX,
+// DirectML sur RTX 30xx) au lieu d'un container DMR externe. AUDIO_LLM_URL
+// pointe sur self par défaut ; override possible via env pour un container distant.
+const PORT = Number(process.env.PORT) || 3000;
+const AUDIO_LLM_URL = (process.env.AUDIO_LLM_URL || `http://localhost:${PORT}`).replace(/\/+$/, '');
 const AUDIO_LLM_MODEL = process.env.AUDIO_LLM_MODEL || 'qwen2-audio-7b';
 const AI_API_URL = (process.env.AI_API_URL || 'https://api.guig.dev').replace(/\/+$/, '');
-const PORT = Number(process.env.PORT) || 3000;
 
 // Helper: Générer un WAV Header 16kHz Mono 16-bit
 function createWavHeader(pcmLength: number, sampleRate = 16000, numChannels = 1): Uint8Array {
@@ -101,29 +105,16 @@ const proxyWithFallback = async (request: Request, localBackend: string, cloudBa
 const wsAsrBuffers = new Map<string, Buffer[]>();
 const activeVoiceStreams = new Map<string, AbortController>();
 
-// 2026-08-28: Emotion cache — non-blocking Qwen2-Audio. Map<sessionId, {hint, ts}>.
-// Skip emotion ce tour, cache pour le prochain. Latence tour N: 300ms (LLM seul).
-// Tour N+1: prompt enrichi via cache, Qwen2-Audio lancé en background pour tour N+2.
-const EMOTION_CACHE_TTL_MS = 8000;
-const emotionCache = new Map<string, { hint: string; timestamp: number }>();
+// 2026-08-29: Emotion cache — non-blocking, fire-and-forget, même contrat.
+// Tour N utilise émotion du tour N-1 (cache 8s). Tour N lance l'inférence
+// en background pour tour N+1. startEmotionExtraction fait un POST HTTP vers
+// AUDIO_LLM_URL/chat/completions (format Qwen2-Audio original) — l'endpoint
+// local est servi juste en-dessous et retourne du wav2vec2.
+const emotionCache = new EmotionCache(8_000);
 
-function getCachedEmotion(sessionId: string): string | null {
-  const cached = emotionCache.get(sessionId);
-  if (!cached) return null;
-  if (Date.now() - cached.timestamp > EMOTION_CACHE_TTL_MS) {
-    emotionCache.delete(sessionId);
-    return null;
-  }
-  return cached.hint;
-}
-
-function storeCachedEmotion(sessionId: string, hint: string): void {
-  emotionCache.set(sessionId, { hint, timestamp: Date.now() });
-}
-
-// Fire-and-forget Qwen2-Audio emotion extraction.
-// Runs en parallèle du LLM, le résultat sera utilisé au tour suivant.
-// Retourne la Promise (non awaited) pour tracking.
+// Fire-and-forget emotion extraction. POST OpenAI multimodal vers /chat/completions.
+// Mêmes inputs/outputs qu'avec Qwen2-Audio : input_audio WAV + texte prompt FR.
+// Le hint retourné (ou null) est stocké en cache et injecté au tour suivant.
 function startEmotionExtraction(
   sessionId: string,
   audioB64: string,
@@ -200,18 +191,48 @@ const app = new Elysia()
   // ─── Statut & Configuration ─────────────────────────────────────
   .get('/api/config', () => ({
     status: 'online',
-    version: '5.1.0-qwen2audio-native',
+    version: '5.3.0-wav2vec-ser-dual-runtime',
     backends: {
       asrLocal: ASR_BACKEND_URL,
       ttsLocal: TTS_BACKEND_URL,
       sidecar: TTS_SIDECAR_URL,
       llmLocal: LLM_BACKEND_URL,
-      audioLlmModel: AUDIO_LLM_MODEL,
       cloudFallback: AI_API_URL,
     },
-    features: ['local-qwen-asr-cpp', 'local-tts-server-cpp', 'qwen2-audio-native-multimodal', 'qwen3-1.7b-text-chat', 'cloud-fallback', 'pcm-streaming', 'vad']
+    ser: ser.stats(),
+    features: ['local-qwen-asr-cpp', 'local-tts-server-cpp', 'wav2vec2-fr-ondevice-ser', 'qwen3-1.7b-text-chat', 'cloud-fallback', 'pcm-streaming', 'vad', 'smart-turn-v2', 'ser-browser-webgpu-wasm']
   }))
   .get('/healthz', () => ({ status: 'ok', uptime: process.uptime() }))
+
+  // ─── SER Model + ORT-WASM asset serving (frontend WebGPU/WASM path) ───
+  // Bun.file() automatically handles HTTP Range requests (partial content),
+  // so the 602 MB ONNX model streams progressively while ORT parses it.
+  .get('/models/ser/*', async ({ params }) => {
+    const sub = params['*'] ?? '';
+    const file = Bun.file(new URL(`../../models/ser-wav2vec2-fr/${sub}`, import.meta.url));
+    if (!(await file.exists())) return new Response('not found', { status: 404 });
+    return new Response(file, {
+      headers: {
+        'Content-Type': 'application/octet-stream',
+        'Cache-Control': 'public, max-age=31536000, immutable',
+        'Access-Control-Allow-Origin': '*',
+      },
+    });
+  })
+  .get('/onnxruntime-web/*', async ({ params }) => {
+    const sub = params['*'] ?? '';
+    const file = Bun.file(new URL(`../../node_modules/onnxruntime-web/dist/${sub}`, import.meta.url));
+    if (!(await file.exists())) return new Response('not found', { status: 404 });
+    const ext = sub.split('.').pop()?.toLowerCase();
+    const ct = ext === 'wasm' ? 'application/wasm' : ext === 'mjs' ? 'application/javascript' : 'application/octet-stream';
+    return new Response(file, {
+      headers: {
+        'Content-Type': ct,
+        'Cache-Control': 'public, max-age=31536000, immutable',
+        'Access-Control-Allow-Origin': '*',
+      },
+    });
+  })
 
   // ─── Routing Voix & TTS ──────────────────────────────────────────
   .all('/api/voice/voices', ({ request }) => proxyWithFallback(request, TTS_BACKEND_URL, AI_API_URL, '/v1/audio/voices'))
@@ -223,11 +244,44 @@ const app = new Elysia()
   .all('/api/voice/transcribe', ({ request }) => proxyWithFallback(request, ASR_BACKEND_URL, AI_API_URL, '/v1/audio/transcriptions'))
   .all('/v1/audio/transcriptions', ({ request }) => proxyWithFallback(request, ASR_BACKEND_URL, AI_API_URL, '/v1/audio/transcriptions'))
 
-  // 2026-08-28: pointe vers AUDIO_LLM_URL (container llama.cpp) qui comprend l'audio.
-  // Le path /v1/audio/classify est réécrit en /chat/completions (endpoint multimodal llama.cpp).
+  // 2026-08-29: /api/voice/classify + /v1/audio/classify rebranchés, exactement
+  // comme à l'époque Qwen2-Audio. AUDIO_LLM_URL pointe sur self par défaut, donc
+  // le proxy tombe sur /chat/completions juste en dessous (wav2vec2 local).
   .all('/api/voice/classify', ({ request }) => proxyWithFallback(request, AUDIO_LLM_URL, AI_API_URL, '/chat/completions'))
   .all('/v1/audio/classify', ({ request }) => proxyWithFallback(request, AUDIO_LLM_URL, AI_API_URL, '/chat/completions'))
-  // .all('/v1/audio/classify', ({ request }) => proxyWithFallback(request, LLM_BACKEND_URL, AI_API_URL, '/v1/audio/classify'))
+
+  // 2026-08-29: endpoint local /chat/completions qui mime l'API Qwen2-Audio
+  // (input_audio + texte prompt FR → réponse OpenAI chat completion avec hint).
+  // Sert le modèle wav2vec2-lg-xlsr-fr-speech-emotion-recognition via ser.classify.
+  .all('/chat/completions', async ({ request }) => {
+    if (request.method !== 'POST') return new Response('method not allowed', { status: 405 });
+    try {
+      const body: any = await request.json();
+      const parts: any[] = body?.messages?.[0]?.content ?? [];
+      const audioPart = parts.find((p: any) => p?.type === 'input_audio');
+      if (!audioPart?.input_audio?.data) {
+        return new Response(JSON.stringify({ error: 'no input_audio in request' }), {
+          status: 400, headers: { 'Content-Type': 'application/json' }
+        });
+      }
+      const wavBytes = Buffer.from(audioPart.input_audio.data, 'base64');
+      // Strip WAV header (44 bytes) si présent — UltraBlabla envoie du PCM brut,
+      // startEmotionExtraction wrap avec createWavHeader avant le POST.
+      const pcmBytes = (wavBytes.byteLength > 44 && wavBytes.toString('ascii', 0, 4) === 'RIFF')
+        ? wavBytes.subarray(44)
+        : wavBytes;
+      const pcm = pcm16leToFloat32(pcmBytes);
+      const res = await ser.classify(pcm);
+      const hint = (res && res.score >= 0.35) ? hintFor(res.label) : '';
+      return new Response(JSON.stringify({
+        choices: [{ message: { role: 'assistant', content: hint } }]
+      }), { headers: { 'Content-Type': 'application/json' } });
+    } catch (e: any) {
+      return new Response(JSON.stringify({ error: e?.message ?? 'SER failed' }), {
+        status: 500, headers: { 'Content-Type': 'application/json' }
+      });
+    }
+  })
 
   // ─── Routing Sidecar Python (Design de Voix & Alignement) ─────────
   .all('/v1/audio/voice/clone', ({ request }) => proxyWithFallback(request, TTS_SIDECAR_URL, AI_API_URL))
@@ -281,28 +335,37 @@ Réponds de manière concise, directe et vivante (1 phrase courte à l'oral, ≤
 Commence TOUJOURS ta réponse par un mot d'amorce court suivi d'une virgule (ex: "Oui,", "D'accord,", "En fait,", "Absolument,", "Bien sûr,", "Regarde,").
 Jamais de syntaxe Markdown (*, #, tirets), ni d'emojis, ni de robotismes.`;
 
-      // ── Étape 0 : Enrichissement émotionnel Québécois via Qwen2-Audio (NON-BLOQUANT) ──
+      // ── Étape 0 : Enrichissement émotionnel Québécois (NON-BLOQUANT) ──
       // Stratégie cache: tour N utilise émotion du tour N-1 (cache 8s).
-      // Tour N lance Qwen2-Audio en background pour tour N+1.
-      // Latence ajoutée: 0ms (au lieu de 1066ms séquentiel).
+      // Tour N lance l'inférence en background pour tour N+1.
+      //   - Si le client envoie emotion_hint (SER WebGPU/WASM côté frontend), on l'utilise direct.
+      //   - Sinon, fallback serveur : startEmotionExtraction → POST AUDIO_LLM_URL/chat/completions
+      //     qui tombe sur l'endpoint local mimant Qwen2-Audio (wav2vec2 in-process).
       let systemPrompt = BASE_SYSTEM;
       const sessionId: string = String(data.session_id || '').trim();
-      const stableSession = sessionId || `anon-${ws.id}`;
+      const stableSession: string = sessionId || `anon-${ws.id}`;
+      const clientHint: string | undefined = typeof data.emotion_hint === 'string' && data.emotion_hint.trim().length > 0
+        ? data.emotion_hint.trim()
+        : undefined;
 
       // 1. Lookup cache (rapide, pas de fetch)
-      const cachedEmotion = getCachedEmotion(ws.id);
+      const cachedEmotion = emotionCache.get(ws.id);
       if (cachedEmotion) {
         systemPrompt = `${BASE_SYSTEM}
 [Contexte émotionnel de l'utilisateur : ${cachedEmotion} Adapte ton registre en conséquence, reste naturel et québécois.]`;
         console.info('[emotion] cache hit:', cachedEmotion.slice(0, 40));
       }
 
-      // 2. Lance Qwen2-Audio en background (fire-and-forget), cache pour le prochain tour
-      if (userAudioB64 && AUDIO_LLM_URL && !abortCtrl.signal.aborted) {
+      // 2. Stocke le hint client direct (zéro coût, zéro latence)
+      if (clientHint) {
+        emotionCache.set(ws.id, clientHint);
+        console.info('[emotion] client hint:', clientHint.slice(0, 40));
+      } else if (userAudioB64 && !abortCtrl.signal.aborted) {
+        // 3. Sinon, lance startEmotionExtraction (fire-and-forget) pour le tour N+1
         const emotionPromise = startEmotionExtraction(stableSession, userAudioB64, abortCtrl.signal);
         emotionPromise.then((hint) => {
           if (hint && !abortCtrl.signal.aborted) {
-            storeCachedEmotion(ws.id, hint);
+            emotionCache.set(ws.id, hint);
             console.info('[emotion] cached for next turn:', hint.slice(0, 40));
           }
         }).catch(() => { /* silent fail */ });
@@ -313,7 +376,10 @@ Jamais de syntaxe Markdown (*, #, tirets), ni d'emojis, ni de robotismes.`;
       //    that the captured audio is real speech (not noise/silence/before-talk).
       //    If `complete: false` → abort the LLM mid-flight + notify client.
       //    Zero latency impact on the happy path (parallel with everything else).
-      if (userAudioB64 && audioDurationMs >= 500 && !abortCtrl.signal.aborted) {
+      const turnDetectDurationMs = userAudioB64
+        ? Buffer.from(userAudioB64, 'base64').length / 32  // 16kHz * 2 bytes/ms
+        : 0;
+      if (userAudioB64 && turnDetectDurationMs >= 500 && !abortCtrl.signal.aborted) {
         const turnPcmBuf = Buffer.from(userAudioB64, 'base64');
         const turnWavHeader = createWavHeader(turnPcmBuf.length, 16000, 1);
         const turnFullWav = Buffer.concat([Buffer.from(turnWavHeader), turnPcmBuf]);
@@ -708,6 +774,11 @@ Jamais de syntaxe Markdown (*, #, tirets), ni d'emojis, ni de robotismes.`;
     }
   })
 
+  .onStart(async () => {
+    const r = await prewarmSer();
+    const ep = ser.stats().providers?.join("+") ?? "n/a";
+    console.log(`🧡 wav2vec2-fr SER    : ${r.ok ? `loaded in ${r.ms.toFixed(0)} ms (${ep})` : `disabled — ${r.reason}`}`);
+  })
   .listen(PORT);
 
 console.log(`🚀 UltraBlabla Hybrid Voice Server running at http://${app.server?.hostname}:${app.server?.port}`);

@@ -1,5 +1,6 @@
 import type { VoiceAbort, VoiceChat, VoiceId, VoiceServerMsg } from './types';
 import { ensureSession } from './session';
+import { ser } from './ser-browser';
 
 export interface WsVoiceClientOpts {
   url?: string;
@@ -14,10 +15,17 @@ type EventMap = {
   error: (msg: { message: string }) => void;
 };
 
+// 2026-08-29: hardcoded Cloudflare Worker WS endpoint so the frontend works
+// when deployed to Pages (no local Bun server). Falls back to same-origin
+// when running locally (vite dev / bun serve on localhost:3000).
 function getDefaultVoiceWsUrl(): string {
   if (typeof window === 'undefined') return 'ws://localhost:3000/v1/voice/stream';
-  const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-  return `${proto}//${window.location.host}/v1/voice/stream`;
+  const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+  if (isLocal) {
+    const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    return `${proto}//${window.location.host}/v1/voice/stream`;
+  }
+  return 'wss://api.guig.dev/v1/voice/stream';
 }
 
 export class WsVoiceClient {
@@ -53,21 +61,36 @@ export class WsVoiceClient {
     if (!this.ws.onmessage) this._wireSocket();
   }
 
+  private async _buildMsg(text: string, opts: { voice?: VoiceId; system?: string; audio?: string }): Promise<VoiceChat> {
+    const session = await ensureSession();
+    let emotion_hint: string | undefined;
+    if (opts.audio) {
+      // Decode base64 PCM Int16-LE → Float32Array, then run client-side SER.
+      try {
+        const bytes = Uint8Array.from(atob(opts.audio), c => c.charCodeAt(0));
+        const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+        const n = bytes.byteLength >> 1;
+        const pcm = new Float32Array(n);
+        for (let i = 0; i < n; i++) pcm[i] = view.getInt16(i << 1, true) / 32768;
+        const res = await ser.classify(pcm);
+        emotion_hint = res?.hint;
+      } catch { /* SER optional — never block the chat */ }
+    }
+    return {
+      type: 'chat',
+      text,
+      voice: opts.voice,
+      system: opts.system,
+      audio: opts.audio,
+      emotion_hint,
+      session_id: session?.session_id,
+      session_token: session?.session_token,
+    };
+  }
+
   private _sendChat(text: string, opts: { voice?: VoiceId; system?: string; audio?: string }) {
     // A null session just means this turn runs without shared memory.
-    void ensureSession().then((session) => {
-      const msg: VoiceChat = {
-        type: 'chat',
-        text,
-        voice: opts.voice,
-        system: opts.system,
-        // PCM base64 pour Qwen2-Audio (enrichissement émotionnel). Optionnel.
-        audio: opts.audio,
-        session_id: session?.session_id,
-        session_token: session?.session_token,
-      };
-      this.ws!.send(JSON.stringify(msg));
-    });
+    void this._buildMsg(text, opts).then((msg) => this.ws!.send(JSON.stringify(msg)));
   }
 
   private _wireSocket() {

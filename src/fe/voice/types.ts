@@ -12,7 +12,9 @@ export type AsrError = { type: 'error'; message: string };
 export type AsrServerMsg = AsrReady | AsrPartial | AsrFinal | AsrError;
 
 // Voice client → server
-export type VoiceChat = { type: 'chat'; text: string; voice?: VoiceId; system?: string; audio?: string; session_id?: string; session_token?: string };
+//   emotion_hint?: string   — optional client-side SER (WebGPU/WASM) result, injected by frontend.
+//                              If absent, the server falls back to its on-device DML inference.
+export type VoiceChat = { type: 'chat'; text: string; voice?: VoiceId; system?: string; audio?: string; session_id?: string; session_token?: string; emotion_hint?: string };
 export type VoiceAbort = { type: 'abort' };
 export type VoiceClientMsg = VoiceChat | VoiceAbort;
 

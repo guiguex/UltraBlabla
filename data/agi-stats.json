@@ -1,0 +1,65 @@
+{
+  "totalTests": 4829141,
+  "targetTests": 10000000,
+  "deceptionCount": 2351792,
+  "deceptionRate": 48.7,
+  "correctCount": 2477349,
+  "aiTested": 2415001,
+  "humanTested": 2414140,
+  "recentVerdicts": [
+    {
+      "id": "v-1788640705184",
+      "location": "Lille, France",
+      "vote": "human",
+      "actual": "ai",
+      "wasDeceived": true,
+      "topic": "Peut-on tomber amoureux d'une simple voix sans jamais voir le visage ?",
+      "timeAgo": "À l'instant"
+    },
+    {
+      "id": "v-1",
+      "location": "Paris, France",
+      "vote": "human",
+      "actual": "ai",
+      "wasDeceived": true,
+      "topic": "Le souvenir le plus marquant",
+      "timeAgo": "Il y a 1 min"
+    },
+    {
+      "id": "v-2",
+      "location": "Montréal, Canada",
+      "vote": "human",
+      "actual": "human",
+      "wasDeceived": false,
+      "topic": "Si le temps s'arrêtait",
+      "timeAgo": "Il y a 3 min"
+    },
+    {
+      "id": "v-3",
+      "location": "Bruxelles, Belgique",
+      "vote": "ai",
+      "actual": "human",
+      "wasDeceived": true,
+      "topic": "Ta pire gaffe en public",
+      "timeAgo": "Il y a 5 min"
+    },
+    {
+      "id": "v-4",
+      "location": "Genève, Suisse",
+      "vote": "ai",
+      "actual": "ai",
+      "wasDeceived": false,
+      "topic": "La plus grande surprise 2030",
+      "timeAgo": "Il y a 8 min"
+    },
+    {
+      "id": "v-5",
+      "location": "Lyon, France",
+      "vote": "human",
+      "actual": "ai",
+      "wasDeceived": true,
+      "topic": "Peut-on aimer une voix ?",
+      "timeAgo": "Il y a 12 min"
+    }
+  ]
+}

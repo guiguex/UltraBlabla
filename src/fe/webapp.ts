@@ -10,10 +10,11 @@ const IS_WEB = Capacitor.getPlatform() === 'web';
 
 type LiveState = 'idle' | 'listening' | 'thinking' | 'speaking';
 
-const FAST_VOICE_SYSTEM_PROMPT = `Tu es UltraBlabla, une IA vocale ultra-réactive, chaleureuse et naturelle.
-Réponds de manière concise, directe et vivante (1 phrase courte à l'oral, ≤ 15 mots).
-Commence TOUJOURS ta réponse par un mot d'amorce court suivi d'une virgule (ex: "Oui,", "D'accord,", "En fait,", "Absolument,", "Bien sûr,", "Regarde,").
+const FAST_VOICE_SYSTEM_PROMPT = `Tu es UltraBlabla, une IA vocale ultra-réactive, vive et intelligente.
+Réponds de manière concise, directe et naturelle (1 à 2 phrases percutantes à l'oral, ≤ 20 mots).
+Commence toujours ta réponse par un mot d'amorce court (ex: "Oui,", "D'accord,", "Absolument,", "Bien sûr,").
 Jamais de syntaxe Markdown (*, #, tirets), ni d'emojis, ni de robotismes.`;
+const FAST_LLM_MODEL = '@cf/meta/llama-3.1-8b-instruct-fast';
 
 class UltraBlablaLiveApp {
     private state: LiveState = 'idle';
@@ -55,7 +56,11 @@ class UltraBlablaLiveApp {
 
     constructor() {
         if (typeof window !== 'undefined') {
-            document.addEventListener('DOMContentLoaded', () => this.init());
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', () => this.init());
+            } else {
+                this.init();
+            }
         }
     }
 
@@ -137,39 +142,29 @@ class UltraBlablaLiveApp {
             if (this.state !== 'idle') this.stopListening();
         });
 
-        // Space shortcut
+        // Keyboard shortcuts: Space to talk, Escape to cancel/stop
         document.addEventListener('keydown', (e) => {
-            if (e.code === 'Space' && (e.target === document.body || e.target === this.recordBtn)) {
+            const activeEl = document.activeElement;
+            const isTyping = activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA');
+            if (isTyping) return;
+
+            if (e.code === 'Space') {
                 e.preventDefault();
                 this.toggleLiveSession();
+            } else if (e.code === 'Escape') {
+                e.preventDefault();
+                if (this.state === 'speaking') {
+                    this.stopSpeaking();
+                } else if (this.state === 'listening') {
+                    this.stopListening();
+                }
             }
         });
     }
 
     private setupChatbox() {
-        this.chatToggleBtn = document.getElementById('chatToggleBtn') as HTMLButtonElement;
-        this.chatboxContent = document.getElementById('chatboxContent') as HTMLElement;
-        this.neuralInput = document.getElementById('neuralInput') as HTMLTextAreaElement;
+        this.neuralInput = document.getElementById('neuralInput') as any;
         this.neuralSendBtn = document.getElementById('neuralSendBtn') as HTMLButtonElement;
-        this.chatStatus = document.getElementById('chatStatus') as HTMLElement;
-
-        if (this.chatStatus) {
-            this.chatStatus.textContent = 'ONLINE • CLOUD AI';
-            this.chatStatus.style.color = '#10b981';
-        }
-
-        this.chatToggleBtn?.addEventListener('click', () => {
-            if (this.chatboxContent) {
-                const isCurrentlyHidden = this.chatboxContent.style.display === 'none' || !this.chatboxContent.classList.contains('active');
-                if (isCurrentlyHidden) {
-                    this.chatboxContent.style.display = 'block';
-                    this.chatboxContent.classList.add('active');
-                } else {
-                    this.chatboxContent.style.display = 'none';
-                    this.chatboxContent.classList.remove('active');
-                }
-            }
-        });
 
         this.neuralInput?.addEventListener('input', () => {
             const hasText = !!this.neuralInput?.value.trim();
@@ -236,7 +231,11 @@ class UltraBlablaLiveApp {
             this.setupVoiceClientListeners();
         }
 
-        this.wsVoice.chat(text, { voice: this.currentVoice(), system: FAST_VOICE_SYSTEM_PROMPT });
+        this.wsVoice.chat(text, {
+            voice: this.currentVoice(),
+            system: FAST_VOICE_SYSTEM_PROMPT,
+            model: FAST_LLM_MODEL
+        });
     }
 
     private setupVoiceClientListeners() {
@@ -359,7 +358,7 @@ class UltraBlablaLiveApp {
             });
             const source = ctx.createMediaStreamSource(stream);
 
-            this.vad = new Vad({ minSpeechMs: 300, silenceMs: 800, rmsThreshold: 0.01, hardCapMs: 15000 });
+            this.vad = new Vad({ minSpeechMs: 180, silenceMs: 380, rmsThreshold: 0.012, hardCapMs: 15000 });
             this.wsAsr = new WsAsrClient({ language: 'fr-CA' });
             this.wsVoice = new WsVoiceClient();
             this.asrReady = false;
@@ -390,6 +389,7 @@ class UltraBlablaLiveApp {
                 },
                 onRms: (rms) => {
                     this.lastRms = rms;
+                    (window as any).__setBioAudioLevel?.(rms, this.state);
 
                     // Full-Duplex Barge-in Acoustique avec Soft Ducking
                     if (this.state === 'speaking') {
@@ -426,7 +426,7 @@ class UltraBlablaLiveApp {
                 },
             });
 
-            // VAD-driven end of utterance (poll ~10 Hz to match onRms rate)
+            // VAD-driven end of utterance (poll 25 Hz / 40ms pour une détection quasi-instantanée de fin de parole)
             this.vadInterval = setInterval(() => {
                 if (this.state !== 'listening') return;
                 const state = this.vad?.push(this.lastRms, performance.now());
@@ -434,7 +434,7 @@ class UltraBlablaLiveApp {
                     this.vad?.reset();
                     void this.finishUtterance();
                 }
-            }, 100);
+            }, 40);
         } catch (err: any) {
             console.error('[Microphone error]', err);
             this.showError(`Microphone indisponible: ${err?.message || 'Accès refusé'}`);
@@ -485,6 +485,7 @@ class UltraBlablaLiveApp {
             voice: this.currentVoice(),
             system: FAST_VOICE_SYSTEM_PROMPT,
             audio: audiob64,   // ← PCM base64 pour Qwen2-Audio
+            model: FAST_LLM_MODEL,
         });
     }
 
@@ -551,7 +552,7 @@ class UltraBlablaLiveApp {
 
     private clearMessages() {
         if (!this.messages) return;
-        this.messages.innerHTML = `<div class="welcome-matrix"><div class="holo-card neural-welcome holo-border neural-scan"><div class="card-glow"></div><div class="quantum-field"></div><div class="quantum-interference"></div><div class="neural-header"><h2 class="matrix-title holo-text">NEURAL VOICE INTERFACE</h2><div class="quantum-line"></div></div><p class="holo-subtitle">Advanced Cloud AI • Quantum Processing</p><div class="tech-specs"><div class="spec-item vosk"><div class="spec-icon"><div class="icon-core"></div><div class="icon-rings"></div></div><div class="spec-details"><span class="spec-name">CLOUDFLARE AI EDGE</span><span class="spec-desc">Global Latency Audio Processing</span></div><div class="spec-status active"></div></div><div class="spec-item qwen"><div class="spec-icon"><div class="icon-core"></div><div class="icon-rings"></div></div><div class="spec-details"><span class="spec-name">Kimi K2.7 / Qwen Neural</span><span class="spec-desc">Quantum Language Matrix</span></div><div class="spec-status active"></div></div><div class="spec-item tts"><div class="spec-icon"><div class="icon-core"></div><div class="icon-rings"></div></div><div class="spec-details"><span class="spec-name">QWEN CLONED TTS + GOOGLE FALLBACK</span><span class="spec-desc">Guillaume Voice Synthesis</span></div><div class="spec-status active"></div></div></div><div class="quantum-prompt"><div class="prompt-glow"></div><span>CLIQUEZ SUR LE BOUTON POUR COMMENCER</span></div></div></div>`;
+        this.messages.innerHTML = `<div class="welcome-matrix"><div class="holo-card neural-welcome holo-border"><div class="card-glow"></div><div class="welcome-icon-wrap"><span class="welcome-icon">🎙️</span></div><h2 class="welcome-title">Bienvenue sur UltraBlabla</h2><p class="welcome-desc">Votre compagnon vocal ultra-réactif. Parlez librement au microphone ou tapez votre message ci-dessous pour démarrer une conversation fluide et instantanée.</p><div class="welcome-tip"><span>💡 Cliquez sur l'orbe central ou appuyez sur <kbd>Espace</kbd> pour commencer à parler.</span></div></div></div>`;
     }
 
     private streamHoloSubtitle(text: string, durationEstimateMs = 3000) {
@@ -577,35 +578,36 @@ class UltraBlablaLiveApp {
 
     private updateUI(newState: LiveState) {
         this.state = newState;
+        (window as any).__setBioAudioLevel?.(this.lastRms, newState);
 
         const btnLabel = this.recordBtn?.querySelector('.btn-label');
         const btnSublabel = this.recordBtn?.querySelector('.btn-sublabel');
 
         switch (newState) {
             case 'idle':
-                if (this.status) this.status.textContent = 'PRÊT • 100% CLOUD AI';
-                if (btnLabel) btnLabel.textContent = 'CLOUD VOICE';
-                if (btnSublabel) btnSublabel.textContent = 'Tap to Activate';
+                if (this.status) this.status.textContent = 'PRÊT • DIALOGUE VOCAL OUVERT';
+                if (btnLabel) btnLabel.textContent = 'PARLER';
+                if (btnSublabel) btnSublabel.textContent = 'Touchez ou [Espace]';
                 this.recordBtn?.classList.remove('voice-active', 'processing', 'speaking');
                 break;
             case 'listening':
                 if (this.status) this.status.textContent = '👂 À l\'écoute... (parlez naturellement)';
-                if (btnLabel) btnLabel.textContent = 'LISTENING';
-                if (btnSublabel) btnSublabel.textContent = 'Tap to Stop & Send';
+                if (btnLabel) btnLabel.textContent = 'ÉCOUTE EN COURS';
+                if (btnSublabel) btnSublabel.textContent = 'Touchez pour envoyer';
                 this.recordBtn?.classList.add('voice-active');
                 this.recordBtn?.classList.remove('processing', 'speaking');
                 break;
             case 'thinking':
-                if (this.status) this.status.textContent = '🧠 Traitement IA...';
-                if (btnLabel) btnLabel.textContent = 'THINKING';
-                if (btnSublabel) btnSublabel.textContent = 'Processing...';
+                if (this.status) this.status.textContent = '🧠 Réflexion en cours...';
+                if (btnLabel) btnLabel.textContent = 'RÉFLEXION';
+                if (btnSublabel) btnSublabel.textContent = 'Traitement IA...';
                 this.recordBtn?.classList.add('processing');
                 this.recordBtn?.classList.remove('voice-active', 'speaking');
                 break;
             case 'speaking':
-                if (this.status) this.status.textContent = '🎙️ Guillaume parle... (touchez pour interrompre)';
-                if (btnLabel) btnLabel.textContent = 'SPEAKING';
-                if (btnSublabel) btnSublabel.textContent = 'Tap to Stop';
+                if (this.status) this.status.textContent = '🎙️ UltraBlabla parle... (touchez pour couper)';
+                if (btnLabel) btnLabel.textContent = 'ÉLOCUTION';
+                if (btnSublabel) btnSublabel.textContent = 'Touchez pour stopper';
                 this.recordBtn?.classList.add('speaking');
                 this.recordBtn?.classList.remove('voice-active', 'processing');
                 break;

@@ -51,7 +51,7 @@ export class WsVoiceClient {
     this.listeners[event]?.forEach(fn => (fn as any)(...args));
   }
 
-  chat(text: string, opts: { voice?: VoiceId; system?: string; audio?: string } = {}): void {
+  chat(text: string, opts: { voice?: VoiceId; system?: string; audio?: string; model?: string } = {}): void {
     if (!this.ws || this.ws.readyState !== 1) {
       this.ws = new WebSocket(this.url);
       this.ws.onopen = () => this._sendChat(text, opts);
@@ -61,7 +61,7 @@ export class WsVoiceClient {
     if (!this.ws.onmessage) this._wireSocket();
   }
 
-  private async _buildMsg(text: string, opts: { voice?: VoiceId; system?: string; audio?: string }): Promise<VoiceChat> {
+  private async _buildMsg(text: string, opts: { voice?: VoiceId; system?: string; audio?: string; model?: string }): Promise<VoiceChat> {
     const session = await ensureSession();
     let emotion_hint: string | undefined;
     if (opts.audio) {
@@ -82,15 +82,20 @@ export class WsVoiceClient {
       voice: opts.voice,
       system: opts.system,
       audio: opts.audio,
+      model: opts.model,
       emotion_hint,
       session_id: session?.session_id,
       session_token: session?.session_token,
     };
   }
 
-  private _sendChat(text: string, opts: { voice?: VoiceId; system?: string; audio?: string }) {
+  private _sendChat(text: string, opts: { voice?: VoiceId; system?: string; audio?: string; model?: string }) {
     // A null session just means this turn runs without shared memory.
-    void this._buildMsg(text, opts).then((msg) => this.ws!.send(JSON.stringify(msg)));
+    void this._buildMsg(text, opts).then((msg) => {
+      if (this.ws && this.ws.readyState === 1) {
+        this.ws.send(JSON.stringify(msg));
+      }
+    });
   }
 
   private _wireSocket() {

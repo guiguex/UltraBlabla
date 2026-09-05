@@ -21,7 +21,7 @@ describe('UltraBlabla Smoke & Endpoints Test', () => {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        model: '@cf/zai-org/glm-5.3-flash',
+        model: '@cf/meta/llama-3.1-8b-instruct-fast',
         messages: [{ role: 'user', content: 'Reponds juste OK' }]
       })
     });

@@ -4,36 +4,37 @@
   "private": true,
   "description": "Application d'assistant vocal UltraBlabla",
   "type": "module",
-  "engines": {
-    "bun": ">=1.4.0"
-  },
   "scripts": {
-    "postinstall": "bun scripts/patch-bun-webgpu.js",
-    "dev": "bun run --hot src/server.ts",
-    "test": "bun test src/",
-    "test:watch": "bun test --watch src/",
-    "build": "bun build src/fe/webapp.ts --outfile=public/webapp.js --target=browser --minify",
-    "android:sync": "bun run build && bun x cap sync android",
-    "android:open": "bun x cap open android",
-    "android:prepare": "powershell -ExecutionPolicy Bypass -File build-android.ps1",
-    "android:release": "cd android && gradlew.bat assembleRelease",
-    "wails:build": "bun run build && powershell -Command \"New-Item -ItemType Directory -Force -Path src-wails\\frontend\\dist; Copy-Item -Path public\\* -Destination src-wails\\frontend\\dist -Recurse -Force\" && cd src-wails && wails3 build",
-    "wails:dev": "cd src-wails && wails3 dev"
+    "dev": "tsx src/server.ts",
+    "build:fe": "esbuild src/fe/webapp.ts --bundle --outfile=public/webapp.js --platform=browser --format=esm",
+    "build:server": "esbuild src/server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs",
+    "build": "npm run build:fe && npm run build:server",
+    "test:endpoints": "tsx scripts/test_all_guig_endpoints.ts",
+    "start": "node dist/server.cjs",
+    "lint": "tsc --noEmit"
   },
   "dependencies": {
     "@capacitor-community/text-to-speech": "^8.0.2",
     "@capacitor/core": "^8.5.0",
     "@elysiajs/static": "^1.4.10",
+    "@google/genai": "^2.21.0",
     "bun-webgpu": "^0.1.7",
     "elysia": "^1.4.30",
+    "express": "^5.2.1",
     "onnxruntime-node": "1.29.0",
-    "onnxruntime-web": "1.29.0"
+    "onnxruntime-web": "1.29.0",
+    "ws": "^8.21.3"
   },
   "devDependencies": {
     "@capacitor/android": "^8.5.0",
     "@capacitor/cli": "^8.5.0",
+    "@types/express": "^5.0.6",
+    "@types/node": "^26.4.1",
+    "@types/ws": "^8.18.1",
     "bun-types": "^1.4.0",
+    "esbuild": "^0.28.2",
     "patch-package": "^8.0.1",
+    "tsx": "^4.23.13",
     "typescript": "^7.0.2"
   }
 }

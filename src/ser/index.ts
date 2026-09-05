@@ -7,10 +7,8 @@ export { hintFor } from "./hints.js";
 export { EmotionCache } from "./emotion-cache.js";
 
 import { promises as fs } from "node:fs";
-import { dirname } from "node:path";
+import path from "node:path";
 import { ser } from "./wav2vec-ser.js";
-
-const MODEL_REL = "../../models/ser-wav2vec2-fr/model_fp16.onnx";
 
 /**
  * Pre-warm the model once at boot. Resolves regardless of outcome:
@@ -19,8 +17,7 @@ const MODEL_REL = "../../models/ser-wav2vec2-fr/model_fp16.onnx";
 export async function prewarmSer(): Promise<{ ok: boolean; reason?: string; ms: number }> {
   const t0 = performance.now();
   try {
-    const path = new URL(MODEL_REL, import.meta.url);
-    const real = Bun.fileURLToPath(path);
+    const real = path.resolve(process.cwd(), "models/ser-wav2vec2-fr/model_fp16.onnx");
     await fs.access(real);                       // throws if missing → silent skip
     await ser.load(real);
     return { ok: true, ms: performance.now() - t0 };

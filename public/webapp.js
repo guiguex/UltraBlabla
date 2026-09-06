@@ -263,9 +263,7 @@ var init_dist = __esm({
           return;
         }
         const index = listeners.indexOf(listenerFunc);
-        if (index !== -1) {
-          this.listeners[eventName].splice(index, 1);
-        }
+        this.listeners[eventName].splice(index, 1);
         if (!this.listeners[eventName].length) {
           this.removeWindowListener(this.windowListeners[eventName]);
         }
@@ -12003,13 +12001,20 @@ function isFemaleVoice(voiceId, description) {
 function feminizeFrenchText(text) {
   if (!text || text.length === 0) return text;
   let result = text;
-  result = result.replace(/\b(je\s+suis|chui|j'suis|suis-je|en\s+tant\s+que|comme)\s+(un|votre|ton)\s+assistant\b/gi, "$1 $2 assistante");
-  result = result.replace(/\b(je\s+suis|chui|j'suis|suis-je|en\s+tant\s+que|comme)\s+(un|votre|ton)\s+conseiller\b/gi, "$1 $2 conseill\xE8re");
-  result = result.replace(/\b(je\s+suis|chui|j'suis|suis-je|en\s+tant\s+que|comme)\s+(un|votre|ton)\s+expert\b/gi, "$1 $2 experte");
-  result = result.replace(/\b(je\s+suis|chui|j'suis|suis-je|en\s+tant\s+que|comme)\s+(un|votre|ton)\s+créateur\b/gi, "$1 $2 cr\xE9atrice");
-  result = result.replace(/\b(je\s+suis|chui|j'suis|suis-je|en\s+tant\s+que|comme)\s+(un|votre|ton)\s+interlocuteur\b/gi, "$1 $2 interlocutrice");
-  result = result.replace(/\b(je\s+suis|chui|j'suis|suis-je|en\s+tant\s+que|comme)\s+(un|votre|ton)\s+utilisateur\b/gi, "$1 $2 utilisatrice");
-  result = result.replace(/\b(je\s+suis|chui|j'suis|suis-je|en\s+tant\s+que|comme)\s+(un|votre|ton)\s+compagnon\b/gi, "$1 $2 compagne");
+  const mapRole = (match, verb, det, roleFem) => {
+    const isIndef = det.toLowerCase() === "un";
+    const isCapital = det.charAt(0) === det.charAt(0).toUpperCase() && det.charAt(0) !== det.charAt(0).toLowerCase();
+    let newDet = det;
+    if (isIndef) newDet = isCapital ? "Une" : "une";
+    return `${verb} ${newDet} ${roleFem}`;
+  };
+  result = result.replace(/\b(je\s+suis|chui|j['’\s]?suis|suis-je|en\s+tant\s+que|comme)\s+(un|une|votre|ton)\s+assistant\b/gi, (_, v, d) => mapRole(_, v, d, "assistante"));
+  result = result.replace(/\b(je\s+suis|chui|j['’\s]?suis|suis-je|en\s+tant\s+que|comme)\s+(un|une|votre|ton)\s+conseiller\b/gi, (_, v, d) => mapRole(_, v, d, "conseill\xE8re"));
+  result = result.replace(/\b(je\s+suis|chui|j['’\s]?suis|suis-je|en\s+tant\s+que|comme)\s+(un|une|votre|ton)\s+expert\b/gi, (_, v, d) => mapRole(_, v, d, "experte"));
+  result = result.replace(/\b(je\s+suis|chui|j['’\s]?suis|suis-je|en\s+tant\s+que|comme)\s+(un|une|votre|ton)\s+créateur\b/gi, (_, v, d) => mapRole(_, v, d, "cr\xE9atrice"));
+  result = result.replace(/\b(je\s+suis|chui|j['’\s]?suis|suis-je|en\s+tant\s+que|comme)\s+(un|une|votre|ton)\s+interlocuteur\b/gi, (_, v, d) => mapRole(_, v, d, "interlocutrice"));
+  result = result.replace(/\b(je\s+suis|chui|j['’\s]?suis|suis-je|en\s+tant\s+que|comme)\s+(un|une|votre|ton)\s+utilisateur\b/gi, (_, v, d) => mapRole(_, v, d, "utilisatrice"));
+  result = result.replace(/\b(je\s+suis|chui|j['’\s]?suis|suis-je|en\s+tant\s+que|comme)\s+(un|une|votre|ton)\s+compagnon\b/gi, (_, v, d) => mapRole(_, v, d, "compagne"));
   const adjMap = {
     "pr\xEAt": "pr\xEAte",
     "content": "contente",
@@ -12054,15 +12059,16 @@ function feminizeFrenchText(text) {
     "arriv\xE9": "arriv\xE9e",
     "rest\xE9": "rest\xE9e"
   };
-  const selfRefRegex = /\b(je\s+suis|chui|j'suis|je\s+serai|j'ai\s+été|je\s+me\s+sens|je\s+suis\s+devenue)(?:\s+(?:vraiment|très|ben|bien|tout\s+à\s+fait|tellement|toujours|assez|super|trop))?\s+([a-zA-ZàâäéèêëîïôöùûüçÉÈÊËÀÂÄÔÖÙÛÜÇ]+)\b/gi;
+  const selfRefRegex = /(?:^|[^\p{L}])(je\s+suis|chui|j['’\s]?suis|je\s+serai|j['’\s]?ai\s+été|je\s+me\s+sens|je\s+suis\s+devenue)(?:\s+(?:vraiment|très|ben|bien|tout\s+à\s+fait|tellement|toujours|assez|super|trop|un\s+peu))?\s+(\p{L}+)(?=[^\p{L}]|$)/giu;
   result = result.replace(selfRefRegex, (match, verb, adj) => {
     const lowerAdj = adj.toLowerCase();
     if (adjMap[lowerAdj]) {
       const feminineAdj = adjMap[lowerAdj];
       const isCapital = adj.charAt(0) === adj.charAt(0).toUpperCase() && adj.charAt(0) !== adj.charAt(0).toLowerCase();
       const finalAdj = isCapital ? feminineAdj.charAt(0).toUpperCase() + feminineAdj.slice(1) : feminineAdj;
-      const adverbSpace = match.slice(verb.length, match.length - adj.length);
-      return `${verb}${adverbSpace}${finalAdj}`;
+      const prefix = match.slice(0, match.indexOf(verb));
+      const adverbSpace = match.slice(match.indexOf(verb) + verb.length, match.length - adj.length);
+      return `${prefix}${verb}${adverbSpace}${finalAdj}`;
     }
     return match;
   });

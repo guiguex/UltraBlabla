@@ -656,7 +656,7 @@ var TTS_SIDECAR_URL = (process.env.TTS_SIDECAR_URL || "http://localhost:5000").r
 var LLM_BACKEND_URL = (process.env.LLM_BACKEND_URL || process.env.CLASSIFIER_BACKEND_URL || "http://api.guig.dev/v1").replace(/\/+$/, "");
 var LOCAL_LLM_MODEL = process.env.LOCAL_LLM_MODEL || process.env.CLASSIFIER_MODEL || "@cf/meta/llama-3.1-8b-instruct-fast";
 var AUDIO_LLM_URL = (process.env.AUDIO_LLM_URL || `http://localhost:${PORT}`).replace(/\/+$/, "");
-var AUDIO_LLM_MODEL = process.env.AUDIO_LLM_MODEL || "";
+var AUDIO_LLM_MODEL = process.env.AUDIO_LLM_MODEL || "qwen2-audio-7b";
 var AI_API_URL = (process.env.AI_API_URL || "https://api.guig.dev").replace(/\/+$/, "");
 var geminiClient = null;
 function getGemini() {
@@ -704,7 +704,7 @@ async function proxyWithFallback(req, res, localBackend, cloudBackend, rewritePa
         headers,
         body: ["GET", "HEAD"].includes(req.method) ? void 0 : rawBody,
         redirect: "manual",
-        signal: AbortSignal.timeout(8e3)
+        signal: AbortSignal.timeout(3e3)
       });
       if (localRes.ok) {
         res.status(localRes.status);
@@ -782,16 +782,6 @@ function startEmotionExtraction(sessionId, audioB64, signal) {
 var app = (0, import_express.default)();
 app.use(import_express.default.json({ limit: "50mb" }));
 app.use(import_express.default.urlencoded({ extended: true, limit: "50mb" }));
-var COOP = "same-origin";
-var COEP = "require-corp";
-var CORP = "same-origin";
-var setIsolationHeaders = (_req, res, next) => {
-  res.setHeader("Cross-Origin-Opener-Policy", COOP);
-  res.setHeader("Cross-Origin-Embedder-Policy", COEP);
-  res.setHeader("Cross-Origin-Resource-Policy", CORP);
-  next();
-};
-app.use(setIsolationHeaders);
 app.get("/api/config", (_req, res) => {
   res.json({
     status: "online",
@@ -832,14 +822,7 @@ app.use("/models/vad", import_express.default.static(VAD_MODELS_DIR, {
 }));
 app.use("/onnxruntime-web", import_express.default.static(ONNX_WEB_DIR, {
   maxAge: "1y",
-  immutable: true,
-  setHeaders: (res, filePath) => {
-    if (filePath.endsWith(".mjs")) {
-      res.setHeader("Content-Type", "application/javascript; charset=utf-8");
-    } else if (filePath.endsWith(".wasm")) {
-      res.setHeader("Content-Type", "application/wasm");
-    }
-  }
+  immutable: true
 }));
 app.all(["/api/voice/voices", "/v1/audio/voices"], (req, res) => proxyWithFallback(req, res, TTS_BACKEND_URL, AI_API_URL, "/v1/audio/voices"));
 app.all(["/api/voice/speak", "/v1/audio/speech"], (req, res) => proxyWithFallback(req, res, TTS_BACKEND_URL, AI_API_URL, "/v1/audio/speech"));
@@ -947,7 +930,7 @@ Utilisateur: ${lastUserMsg}` }]
           messages,
           max_tokens: 80
         }),
-        signal: AbortSignal.timeout(12e3)
+        signal: AbortSignal.timeout(6e3)
       });
       if (cloudRes.ok) {
         const json = await cloudRes.json();

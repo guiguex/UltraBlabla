@@ -1,0 +1,1337 @@
+/* ========================================
+   ULTRABLABLA 2030 - NEURAL QUANTUM INTERFACE
+   Ultra Modern CSS with Bleeding Edge Animations
+======================================== */
+
+:root {
+    /* Neural Color Palette */
+    --quantum-black: #000000;
+    --neural-dark: #0a0a0a;
+    --matrix-bg: #111111;
+    --holo-primary: #00ffff;
+    --quantum-purple: #8B5CF6;
+    --neural-pink: #EC4899;
+    --plasma-green: #10B981;
+    --energy-blue: #3B82F6;
+    --warning-orange: #F59E0B;
+    
+    /* Glass & Glow Effects */
+    --glass-bg: rgba(255, 255, 255, 0.05);
+    --glass-border: rgba(255, 255, 255, 0.1);
+    --neural-glow: 0 0 30px var(--holo-primary);
+    --quantum-shadow: 0 8px 32px rgba(0, 255, 255, 0.3);
+    
+    /* Typography */
+    --font-primary: 'Inter', system-ui, -apple-system, sans-serif;
+    --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+    
+    /* Spacing & Sizing */
+    --space-xs: 0.25rem;
+    --space-sm: 0.5rem;
+    --space-md: 1rem;
+    --space-lg: 1.5rem;
+    --space-xl: 2rem;
+    --space-2xl: 3rem;
+    
+    /* Animation Timing */
+    --anim-fast: 0.15s;
+    --anim-normal: 0.3s;
+    --anim-slow: 0.6s;
+    --anim-ultra-slow: 1.2s;
+}
+
+/* ========================================
+   NEURAL RESET & BASE STYLES
+======================================== */
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+html, body {
+    height: 100%;
+    overflow-x: hidden;
+    font-family: var(--font-primary);
+    background: var(--quantum-black);
+    color: var(--holo-primary);
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+
+/* ========================================
+   NEURAL BACKGROUND EFFECTS
+======================================== */
+
+.neural-bg {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    z-index: -1;
+    background: 
+        radial-gradient(circle at 20% 80%, rgba(139, 92, 246, 0.15) 0%, transparent 50%),
+        radial-gradient(circle at 80% 20%, rgba(16, 185, 129, 0.15) 0%, transparent 50%),
+        radial-gradient(circle at 40% 40%, rgba(59, 130, 246, 0.1) 0%, transparent 50%),
+        linear-gradient(135deg, var(--neural-dark) 0%, var(--matrix-bg) 100%);
+}
+
+.neural-grid {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-image: 
+        linear-gradient(rgba(0, 255, 255, 0.1) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(0, 255, 255, 0.1) 1px, transparent 1px);
+    background-size: 50px 50px;
+    animation: neural-grid-flow 20s linear infinite;
+    opacity: 0.3;
+}
+
+@keyframes neural-grid-flow {
+    0% { transform: translate(0, 0); }
+    100% { transform: translate(50px, 50px); }
+}
+
+.quantum-particles {
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    background-image: 
+        radial-gradient(2px 2px at 20px 30px, var(--holo-primary), transparent),
+        radial-gradient(2px 2px at 40px 70px, var(--quantum-purple), transparent),
+        radial-gradient(1px 1px at 90px 40px, var(--plasma-green), transparent),
+        radial-gradient(1px 1px at 130px 80px, var(--neural-pink), transparent);
+    background-repeat: repeat;
+    background-size: 200px 200px;
+    animation: quantum-drift 15s ease-in-out infinite alternate;
+    opacity: 0.6;
+}
+
+@keyframes quantum-drift {
+    0% { transform: translateY(0) rotate(0deg); opacity: 0.6; }
+    100% { transform: translateY(-20px) rotate(5deg); opacity: 0.8; }
+}
+
+#neural-canvas {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+}
+
+/* ========================================
+   HOLOGRAPHIC CONTAINER
+======================================== */
+
+.holo-container {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    position: relative;
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+}
+
+/* ========================================
+   QUANTUM HEADER
+======================================== */
+
+.quantum-header {
+    padding: var(--space-lg) var(--space-lg) var(--space-md);
+    background: linear-gradient(135deg, var(--glass-bg), rgba(0, 255, 255, 0.05));
+    border-bottom: 1px solid var(--glass-border);
+    backdrop-filter: blur(30px);
+    -webkit-backdrop-filter: blur(30px);
+    position: relative;
+    overflow: hidden;
+}
+
+.quantum-header::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: linear-gradient(90deg, transparent, rgba(0, 255, 255, 0.1), transparent);
+    animation: quantum-scan 3s ease-in-out infinite;
+}
+
+@keyframes quantum-scan {
+    0%, 100% { transform: translateX(-100%); }
+    50% { transform: translateX(100%); }
+}
+
+.logo-neural {
+    display: flex;
+    align-items: center;
+    gap: var(--space-md);
+    position: relative;
+    z-index: 2;
+}
+
+.neural-pulse {
+    width: 12px;
+    height: 12px;
+    background: var(--holo-primary);
+    border-radius: 50%;
+    position: relative;
+    animation: neural-heartbeat 2s ease-in-out infinite;
+}
+
+.neural-pulse::before,
+.neural-pulse::after {
+    content: '';
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    border: 2px solid var(--holo-primary);
+    border-radius: 50%;
+    animation: neural-ripple 2s ease-out infinite;
+}
+
+.neural-pulse::after {
+    animation-delay: 1s;
+}
+
+@keyframes neural-heartbeat {
+    0%, 100% { transform: scale(1); opacity: 1; }
+    50% { transform: scale(1.2); opacity: 0.8; }
+}
+
+@keyframes neural-ripple {
+    0% { transform: scale(1); opacity: 1; }
+    100% { transform: scale(3); opacity: 0; }
+}
+
+.holo-title {
+    font-size: clamp(1.8rem, 4vw, 2.5rem);
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    line-height: 1;
+    background: linear-gradient(135deg, var(--holo-primary), var(--quantum-purple), var(--neural-pink));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    animation: holo-shimmer 3s ease-in-out infinite alternate;
+}
+
+@keyframes holo-shimmer {
+    0% { filter: hue-rotate(0deg) brightness(1); }
+    100% { filter: hue-rotate(30deg) brightness(1.2); }
+}
+
+.neural-text {
+    text-shadow: 0 0 20px var(--holo-primary);
+}
+
+.quantum-glow {
+    text-shadow: 0 0 20px var(--quantum-purple);
+}
+
+.ai-badge {
+    position: relative;
+    padding: var(--space-xs) var(--space-sm);
+    background: rgba(139, 92, 246, 0.2);
+    border: 1px solid var(--quantum-purple);
+    border-radius: 20px;
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    backdrop-filter: blur(10px);
+    overflow: hidden;
+}
+
+.badge-text {
+    position: relative;
+    z-index: 2;
+}
+
+.badge-pulse {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: linear-gradient(45deg, transparent, rgba(139, 92, 246, 0.3), transparent);
+    animation: badge-glow 2s ease-in-out infinite;
+}
+
+@keyframes badge-glow {
+    0%, 100% { opacity: 0; transform: translateX(-100%); }
+    50% { opacity: 1; transform: translateX(100%); }
+}
+
+.status-matrix {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    margin-top: var(--space-md);
+    padding: var(--space-sm) var(--space-md);
+    background: rgba(0, 255, 255, 0.1);
+    border: 1px solid rgba(0, 255, 255, 0.3);
+    border-radius: 12px;
+    position: relative;
+    overflow: hidden;
+}
+
+.matrix-dots {
+    display: flex;
+    gap: 4px;
+}
+
+.matrix-dots::before,
+.matrix-dots::after {
+    content: '';
+    width: 6px;
+    height: 6px;
+    background: var(--holo-primary);
+    border-radius: 50%;
+    animation: matrix-blink 1.5s ease-in-out infinite alternate;
+}
+
+.matrix-dots::after {
+    animation-delay: 0.5s;
+}
+
+@keyframes matrix-blink {
+    0% { opacity: 0.3; transform: scale(0.8); }
+    100% { opacity: 1; transform: scale(1); }
+}
+
+.status-text {
+    font-family: var(--font-mono);
+    font-size: 0.8rem;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--holo-primary);
+}
+
+.status-waves {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: linear-gradient(90deg, transparent, rgba(0, 255, 255, 0.2), transparent);
+    animation: status-flow 2s ease-in-out infinite;
+}
+
+@keyframes status-flow {
+    0%, 100% { transform: translateX(-100%); }
+    50% { transform: translateX(100%); }
+}
+
+/* ========================================
+   QUANTUM MAIN INTERFACE
+======================================== */
+
+.quantum-main {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    padding: var(--space-lg);
+    gap: var(--space-xl);
+    position: relative;
+}
+
+.neural-stream {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-md);
+    overflow-y: auto;
+    padding-right: var(--space-xs);
+}
+
+/* Custom scrollbar */
+.neural-stream::-webkit-scrollbar {
+    width: 6px;
+}
+
+.neural-stream::-webkit-scrollbar-track {
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 3px;
+}
+
+.neural-stream::-webkit-scrollbar-thumb {
+    background: var(--holo-primary);
+    border-radius: 3px;
+    box-shadow: 0 0 6px var(--holo-primary);
+}
+
+.holo-card {
+    background: linear-gradient(135deg, var(--glass-bg), rgba(255, 255, 255, 0.03));
+    border: 1px solid var(--glass-border);
+    border-radius: 20px;
+    padding: var(--space-xl);
+    position: relative;
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    overflow: hidden;
+    animation: card-materialize 0.8s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes card-materialize {
+    0% {
+        opacity: 0;
+        transform: translateY(30px) scale(0.9);
+        filter: blur(10px);
+    }
+    100% {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+        filter: blur(0);
+    }
+}
+
+.card-glow {
+    position: absolute;
+    top: -50%;
+    left: -50%;
+    width: 200%;
+    height: 200%;
+    background: radial-gradient(circle, rgba(0, 255, 255, 0.1) 0%, transparent 70%);
+    animation: card-glow-pulse 4s ease-in-out infinite alternate;
+    pointer-events: none;
+}
+
+@keyframes card-glow-pulse {
+    0% { opacity: 0.5; transform: scale(0.8) rotate(0deg); }
+    100% { opacity: 1; transform: scale(1.2) rotate(180deg); }
+}
+
+.neural-header {
+    text-align: center;
+    margin-bottom: var(--space-lg);
+}
+
+.matrix-title {
+    font-size: clamp(1.5rem, 3vw, 2rem);
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    background: linear-gradient(135deg, var(--holo-primary), var(--quantum-purple));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    margin-bottom: var(--space-sm);
+    animation: title-glow 3s ease-in-out infinite alternate;
+}
+
+@keyframes title-glow {
+    0% { text-shadow: 0 0 20px rgba(0, 255, 255, 0.5); }
+    100% { text-shadow: 0 0 40px rgba(139, 92, 246, 0.8); }
+}
+
+.quantum-line {
+    width: 100px;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, var(--holo-primary), transparent);
+    margin: 0 auto var(--space-md);
+    animation: line-pulse 2s ease-in-out infinite;
+}
+
+@keyframes line-pulse {
+    0%, 100% { opacity: 0.5; transform: scaleX(0.8); }
+    50% { opacity: 1; transform: scaleX(1.2); }
+}
+
+.holo-subtitle {
+    font-size: 1.1rem;
+    color: rgba(0, 255, 255, 0.8);
+    font-weight: 300;
+    letter-spacing: 0.05em;
+}
+
+.tech-specs {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-md);
+    margin: var(--space-xl) 0;
+}
+
+.spec-item {
+    display: flex;
+    align-items: center;
+    gap: var(--space-md);
+    padding: var(--space-md);
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 15px;
+    transition: all var(--anim-normal) cubic-bezier(0.16, 1, 0.3, 1);
+    position: relative;
+    overflow: hidden;
+}
+
+.spec-item:hover {
+    background: rgba(255, 255, 255, 0.08);
+    border-color: var(--holo-primary);
+    transform: translateY(-2px);
+    box-shadow: 0 10px 25px rgba(0, 255, 255, 0.2);
+}
+
+.spec-item::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: linear-gradient(45deg, transparent, rgba(255, 255, 255, 0.05), transparent);
+    transform: translateX(-100%);
+    transition: transform var(--anim-slow) ease;
+}
+
+.spec-item:hover::before {
+    transform: translateX(100%);
+}
+
+.spec-icon {
+    width: 40px;
+    height: 40px;
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.icon-core {
+    width: 12px;
+    height: 12px;
+    background: var(--holo-primary);
+    border-radius: 50%;
+    position: relative;
+    z-index: 2;
+    animation: icon-pulse 2s ease-in-out infinite;
+}
+
+.icon-rings {
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    border: 2px solid rgba(0, 255, 255, 0.3);
+    border-radius: 50%;
+    animation: icon-rotate 8s linear infinite;
+}
+
+.icon-rings::before,
+.icon-rings::after {
+    content: '';
+    position: absolute;
+    width: 80%;
+    height: 80%;
+    top: 10%;
+    left: 10%;
+    border: 1px solid rgba(0, 255, 255, 0.5);
+    border-radius: 50%;
+    border-top-color: transparent;
+    border-right-color: transparent;
+}
+
+.icon-rings::after {
+    width: 60%;
+    height: 60%;
+    top: 20%;
+    left: 20%;
+    animation: icon-rotate 4s linear infinite reverse;
+}
+
+@keyframes icon-pulse {
+    0%, 100% { transform: scale(1); opacity: 1; }
+    50% { transform: scale(1.3); opacity: 0.7; }
+}
+
+@keyframes icon-rotate {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+.spec-details {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-xs);
+}
+
+.spec-name {
+    font-family: var(--font-mono);
+    font-size: 0.9rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--holo-primary);
+}
+
+.spec-desc {
+    font-size: 0.8rem;
+    color: rgba(0, 255, 255, 0.7);
+    font-weight: 300;
+}
+
+.spec-status {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--plasma-green);
+    position: relative;
+    animation: status-blink 2s ease-in-out infinite;
+}
+
+.spec-status.active {
+    box-shadow: 0 0 10px var(--plasma-green);
+}
+
+@keyframes status-blink {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.3; }
+}
+
+.quantum-prompt {
+    text-align: center;
+    position: relative;
+    padding: var(--space-lg);
+    background: rgba(0, 255, 255, 0.05);
+    border: 1px solid rgba(0, 255, 255, 0.2);
+    border-radius: 15px;
+    margin-top: var(--space-lg);
+    overflow: hidden;
+}
+
+.prompt-glow {
+    position: absolute;
+    top: -50%;
+    left: -50%;
+    width: 200%;
+    height: 200%;
+    background: radial-gradient(circle, rgba(0, 255, 255, 0.1) 0%, transparent 60%);
+    animation: prompt-breathe 3s ease-in-out infinite alternate;
+}
+
+@keyframes prompt-breathe {
+    0% { transform: scale(0.8) rotate(0deg); opacity: 0.3; }
+    100% { transform: scale(1.2) rotate(180deg); opacity: 0.7; }
+}
+
+.quantum-prompt span {
+    font-family: var(--font-mono);
+    font-size: 0.9rem;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.15em;
+    color: var(--holo-primary);
+    position: relative;
+    z-index: 2;
+    animation: prompt-flicker 4s ease-in-out infinite;
+}
+
+@keyframes prompt-flicker {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.8; }
+    85% { opacity: 0.9; }
+}
+
+/* ========================================
+   QUANTUM VOICE CONTROLS
+======================================== */
+
+.quantum-controls {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-lg);
+    padding: var(--space-lg);
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.05), rgba(0, 255, 255, 0.03));
+    border: 1px solid var(--glass-border);
+    border-radius: 25px;
+    backdrop-filter: blur(30px);
+    -webkit-backdrop-filter: blur(30px);
+    position: relative;
+    overflow: hidden;
+}
+
+.control-matrix {
+    display: flex;
+    align-items: center;
+    gap: var(--space-lg);
+}
+
+.neural-record-btn {
+    width: 120px;
+    height: 120px;
+    border: none;
+    border-radius: 50%;
+    position: relative;
+    cursor: pointer;
+    background: transparent;
+    transition: all var(--anim-normal) cubic-bezier(0.16, 1, 0.3, 1);
+    overflow: hidden;
+}
+
+.neural-record-btn:hover {
+    transform: scale(1.05);
+}
+
+.neural-record-btn:active {
+    transform: scale(0.95);
+}
+
+.btn-quantum-bg {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: radial-gradient(circle, rgba(0, 255, 255, 0.2) 0%, rgba(139, 92, 246, 0.1) 100%);
+    border-radius: 50%;
+    animation: btn-quantum-pulse 3s ease-in-out infinite;
+}
+
+@keyframes btn-quantum-pulse {
+    0%, 100% { transform: scale(1); opacity: 0.8; }
+    50% { transform: scale(1.1); opacity: 1; }
+}
+
+.btn-neural-core {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 60px;
+    height: 60px;
+    background: linear-gradient(135deg, var(--holo-primary), var(--quantum-purple));
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 3;
+    box-shadow: var(--neural-glow);
+}
+
+.mic-icon {
+    position: relative;
+    width: 24px;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.mic-core {
+    width: 12px;
+    height: 16px;
+    background: var(--quantum-black);
+    border-radius: 6px 6px 6px 6px;
+    position: relative;
+}
+
+.mic-core::before {
+    content: '';
+    position: absolute;
+    bottom: -4px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 20px;
+    height: 2px;
+    background: var(--quantum-black);
+}
+
+.mic-core::after {
+    content: '';
+    position: absolute;
+    bottom: -8px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 2px;
+    height: 6px;
+    background: var(--quantum-black);
+}
+
+.mic-waves {
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    border: 2px solid var(--quantum-black);
+    border-radius: 50%;
+    opacity: 0;
+    animation: mic-waves 2s ease-out infinite;
+}
+
+.mic-waves::before,
+.mic-waves::after {
+    content: '';
+    position: absolute;
+    width: 120%;
+    height: 120%;
+    top: -10%;
+    left: -10%;
+    border: 2px solid var(--quantum-black);
+    border-radius: 50%;
+    opacity: 0;
+}
+
+.mic-waves::before {
+    animation: mic-waves 2s ease-out infinite 0.5s;
+}
+
+.mic-waves::after {
+    animation: mic-waves 2s ease-out infinite 1s;
+}
+
+@keyframes mic-waves {
+    0% {
+        transform: scale(0.5);
+        opacity: 1;
+    }
+    100% {
+        transform: scale(2);
+        opacity: 0;
+    }
+}
+
+.btn-holo-ring {
+    position: absolute;
+    top: -5px;
+    left: -5px;
+    right: -5px;
+    bottom: -5px;
+    border: 2px solid var(--holo-primary);
+    border-radius: 50%;
+    opacity: 0.5;
+    animation: holo-ring-rotate 8s linear infinite;
+}
+
+.btn-holo-ring::before,
+.btn-holo-ring::after {
+    content: '';
+    position: absolute;
+    width: 6px;
+    height: 6px;
+    background: var(--holo-primary);
+    border-radius: 50%;
+    top: -3px;
+}
+
+.btn-holo-ring::before {
+    left: -3px;
+    box-shadow: 0 0 10px var(--holo-primary);
+}
+
+.btn-holo-ring::after {
+    right: -3px;
+    animation-delay: 4s;
+    box-shadow: 0 0 10px var(--quantum-purple);
+    background: var(--quantum-purple);
+}
+
+@keyframes holo-ring-rotate {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+.btn-text {
+    position: absolute;
+    bottom: -50px;
+    left: 50%;
+    transform: translateX(-50%);
+    text-align: center;
+    pointer-events: none;
+}
+
+.btn-label {
+    display: block;
+    font-family: var(--font-mono);
+    font-size: 0.8rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--holo-primary);
+    margin-bottom: var(--space-xs);
+}
+
+.btn-sublabel {
+    display: block;
+    font-size: 0.7rem;
+    color: rgba(0, 255, 255, 0.6);
+    font-weight: 300;
+}
+
+.btn-particles {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    pointer-events: none;
+    border-radius: 50%;
+    background-image: 
+        radial-gradient(2px 2px at 20px 20px, var(--holo-primary), transparent),
+        radial-gradient(1px 1px at 40px 40px, var(--quantum-purple), transparent),
+        radial-gradient(1px 1px at 60px 60px, var(--plasma-green), transparent);
+    background-size: 80px 80px;
+    animation: btn-particles-float 6s ease-in-out infinite;
+    opacity: 0.7;
+}
+
+@keyframes btn-particles-float {
+    0%, 100% { transform: rotate(0deg) scale(1); }
+    50% { transform: rotate(180deg) scale(1.1); }
+}
+
+.quantum-clear-btn {
+    width: 50px;
+    height: 50px;
+    border: none;
+    border-radius: 50%;
+    position: relative;
+    cursor: pointer;
+    background: transparent;
+    transition: all var(--anim-normal) cubic-bezier(0.16, 1, 0.3, 1);
+    overflow: hidden;
+}
+
+.quantum-clear-btn:hover {
+    transform: scale(1.1);
+}
+
+.clear-neural-bg {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: radial-gradient(circle, rgba(245, 158, 11, 0.2) 0%, transparent 100%);
+    border-radius: 50%;
+}
+
+.clear-icon {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 20px;
+    height: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.clear-core {
+    width: 12px;
+    height: 12px;
+    background: var(--warning-orange);
+    border-radius: 2px;
+    transform: rotate(45deg);
+    position: relative;
+}
+
+.clear-lines {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 16px;
+    height: 2px;
+    background: var(--quantum-black);
+}
+
+.clear-lines::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%) rotate(90deg);
+    width: 16px;
+    height: 2px;
+    background: var(--quantum-black);
+}
+
+.clear-glow {
+    position: absolute;
+    top: -5px;
+    left: -5px;
+    right: -5px;
+    bottom: -5px;
+    border: 1px solid var(--warning-orange);
+    border-radius: 50%;
+    opacity: 0.5;
+    animation: clear-glow-pulse 2s ease-in-out infinite;
+}
+
+@keyframes clear-glow-pulse {
+    0%, 100% { opacity: 0.3; transform: scale(1); }
+    50% { opacity: 0.8; transform: scale(1.1); }
+}
+
+.neural-monitor {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-sm);
+}
+
+.monitor-bars {
+    display: flex;
+    align-items: end;
+    gap: 3px;
+    height: 30px;
+}
+
+.bar {
+    width: 4px;
+    background: linear-gradient(to top, var(--holo-primary), var(--quantum-purple));
+    border-radius: 2px;
+    animation: bar-dance 1.5s ease-in-out infinite;
+    animation-delay: var(--delay);
+}
+
+@keyframes bar-dance {
+    0%, 100% { height: 8px; opacity: 0.6; }
+    50% { height: 25px; opacity: 1; }
+}
+
+.monitor-label {
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: rgba(0, 255, 255, 0.8);
+}
+
+/* ========================================
+   RECORDING STATE ANIMATIONS
+======================================== */
+
+.neural-record-btn.recording .btn-quantum-bg {
+    animation: recording-pulse 0.8s ease-in-out infinite;
+    background: radial-gradient(circle, rgba(236, 72, 153, 0.4) 0%, rgba(139, 92, 246, 0.2) 100%);
+}
+
+.neural-record-btn.recording .btn-neural-core {
+    background: linear-gradient(135deg, var(--neural-pink), var(--quantum-purple));
+    animation: recording-core-glow 1s ease-in-out infinite;
+}
+
+.neural-record-btn.recording .mic-waves {
+    opacity: 1;
+}
+
+@keyframes recording-pulse {
+    0%, 100% { transform: scale(1); opacity: 0.9; }
+    50% { transform: scale(1.2); opacity: 1; }
+}
+
+@keyframes recording-core-glow {
+    0%, 100% { box-shadow: 0 0 30px var(--neural-pink); }
+    50% { box-shadow: 0 0 50px var(--quantum-purple); }
+}
+
+/* ========================================
+   HOLOGRAPHIC FOOTER
+======================================== */
+
+.quantum-footer {
+    padding: var(--space-md) var(--space-lg);
+    background: linear-gradient(135deg, var(--glass-bg), rgba(0, 0, 0, 0.3));
+    border-top: 1px solid var(--glass-border);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    position: relative;
+}
+
+.footer-neural-line {
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--holo-primary), var(--quantum-purple), transparent);
+    margin-bottom: var(--space-md);
+    animation: footer-line-flow 3s ease-in-out infinite;
+}
+
+@keyframes footer-line-flow {
+    0%, 100% { opacity: 0.5; }
+    50% { opacity: 1; }
+}
+
+.footer-info {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.build-info {
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    font-weight: 400;
+    color: rgba(0, 255, 255, 0.6);
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+}
+
+.ai-heartbeat {
+    width: 8px;
+    height: 8px;
+    background: var(--plasma-green);
+    border-radius: 50%;
+    animation: ai-pulse 2s ease-in-out infinite;
+    box-shadow: 0 0 10px var(--plasma-green);
+}
+
+@keyframes ai-pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.6; transform: scale(1.3); }
+}
+
+/* ========================================
+   MESSAGE BUBBLES & CHAT
+======================================== */
+
+.message-bubble {
+    display: flex;
+    gap: var(--space-md);
+    margin-bottom: var(--space-md);
+    animation: message-appear 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes message-appear {
+    0% {
+        opacity: 0;
+        transform: translateY(20px) scale(0.9);
+    }
+    100% {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}
+
+.message-bubble.user {
+    flex-direction: row-reverse;
+}
+
+.message-avatar {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.2rem;
+    flex-shrink: 0;
+    position: relative;
+}
+
+.message-avatar.user {
+    background: linear-gradient(135deg, var(--holo-primary), var(--energy-blue));
+    box-shadow: 0 0 20px rgba(0, 255, 255, 0.4);
+}
+
+.message-avatar.ai {
+    background: linear-gradient(135deg, var(--quantum-purple), var(--neural-pink));
+    box-shadow: 0 0 20px rgba(139, 92, 246, 0.4);
+    animation: ai-avatar-glow 3s ease-in-out infinite alternate;
+}
+
+@keyframes ai-avatar-glow {
+    0% { box-shadow: 0 0 20px rgba(139, 92, 246, 0.4); }
+    100% { box-shadow: 0 0 30px rgba(236, 72, 153, 0.6); }
+}
+
+.message-content {
+    flex: 1;
+    max-width: 80%;
+}
+
+.message-text {
+    background: linear-gradient(135deg, var(--glass-bg), rgba(255, 255, 255, 0.03));
+    border: 1px solid var(--glass-border);
+    border-radius: 18px;
+    padding: var(--space-md) var(--space-lg);
+    position: relative;
+    backdrop-filter: blur(15px);
+    -webkit-backdrop-filter: blur(15px);
+    line-height: 1.5;
+    font-size: 0.95rem;
+}
+
+.message-bubble.user .message-text {
+    background: linear-gradient(135deg, rgba(0, 255, 255, 0.1), rgba(59, 130, 246, 0.05));
+    border-color: rgba(0, 255, 255, 0.3);
+    color: var(--holo-primary);
+}
+
+.message-bubble.ai .message-text {
+    background: linear-gradient(135deg, rgba(139, 92, 246, 0.1), rgba(236, 72, 153, 0.05));
+    border-color: rgba(139, 92, 246, 0.3);
+    color: rgba(255, 255, 255, 0.9);
+}
+
+.message-time {
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    color: rgba(255, 255, 255, 0.5);
+    margin-top: var(--space-xs);
+    text-align: right;
+}
+
+.message-bubble.user .message-time {
+    text-align: left;
+}
+
+/* ========================================
+   RESPONSIVE DESIGN
+======================================== */
+
+@media (max-width: 768px) {
+    .quantum-header {
+        padding: var(--space-md);
+    }
+    
+    .logo-neural {
+        flex-direction: column;
+        text-align: center;
+        gap: var(--space-sm);
+    }
+    
+    .holo-title {
+        font-size: clamp(1.5rem, 6vw, 2rem);
+    }
+    
+    .quantum-main {
+        padding: var(--space-md);
+    }
+    
+    .holo-card {
+        padding: var(--space-lg);
+    }
+    
+    .tech-specs {
+        gap: var(--space-sm);
+    }
+    
+    .spec-item {
+        padding: var(--space-sm);
+    }
+    
+    .control-matrix {
+        flex-direction: column;
+        gap: var(--space-md);
+    }
+    
+    .neural-record-btn {
+        width: 100px;
+        height: 100px;
+    }
+    
+    .btn-neural-core {
+        width: 50px;
+        height: 50px;
+    }
+    
+    .message-content {
+        max-width: 85%;
+    }
+    
+    .footer-info {
+        flex-direction: column;
+        gap: var(--space-sm);
+        text-align: center;
+    }
+}
+
+@media (max-width: 480px) {
+    .quantum-main {
+        padding: var(--space-sm);
+    }
+    
+    .holo-card {
+        padding: var(--space-md);
+    }
+    
+    .neural-record-btn {
+        width: 80px;
+        height: 80px;
+    }
+    
+    .btn-neural-core {
+        width: 40px;
+        height: 40px;
+    }
+    
+    .btn-text {
+        bottom: -40px;
+    }
+    
+    .btn-label {
+        font-size: 0.7rem;
+    }
+    
+    .btn-sublabel {
+        font-size: 0.6rem;
+    }
+}
+
+/* ========================================
+   PERFORMANCE OPTIMIZATIONS
+======================================== */
+
+* {
+    will-change: auto;
+}
+
+.neural-record-btn,
+.quantum-clear-btn,
+.holo-card {
+    transform: translateZ(0);
+    backface-visibility: hidden;
+    perspective: 1000px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+    }
+}
+
+/* ========================================
+   DARK MODE ENHANCEMENTS
+======================================== */
+
+@media (prefers-color-scheme: dark) {
+    :root {
+        --glass-bg: rgba(255, 255, 255, 0.03);
+        --glass-border: rgba(255, 255, 255, 0.08);
+    }
+}
+
+/* ========================================
+   HIGH CONTRAST MODE
+======================================== */
+
+@media (prefers-contrast: high) {
+    :root {
+        --holo-primary: #00ffff;
+        --quantum-purple: #aa66ff;
+        --neural-pink: #ff4499;
+        --plasma-green: #00ff88;
+    }
+    
+    .holo-card,
+    .spec-item,
+    .message-text {
+        border-width: 2px;
+    }
+}

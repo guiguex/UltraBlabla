@@ -1,0 +1,504 @@
+/* ========================================
+   RESPONSIVE DESIGN & CLEAN FUTURISTIC LAYOUT
+   UltraBlabla • Compagnon Vocal IA Temps Réel
+======================================== */
+
+/* ─── Base Variables & Reset Supplements ──────────────────────────────── */
+:root {
+    --holo-cyan: #00ffff;
+    --holo-purple: #8b5cf6;
+    --holo-pink: #ec4899;
+    --holo-emerald: #10b981;
+    --holo-dark-bg: rgba(7, 11, 20, 0.88);
+}
+
+/* ─── Header Styling ─────────────────────────────────────────────────── */
+.header-main-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    width: 100%;
+    flex-wrap: wrap;
+    gap: 16px;
+}
+
+.header-extra-tools {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.status-matrix {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 16px;
+    background: rgba(0, 255, 255, 0.04);
+    border: 1px solid rgba(0, 255, 255, 0.15);
+    border-radius: 9999px;
+    margin-top: 10px;
+    width: fit-content;
+}
+
+.status-live-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--holo-emerald);
+    box-shadow: 0 0 10px var(--holo-emerald);
+    animation: live-pulse 2s infinite ease-in-out;
+}
+
+@keyframes live-pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.4; transform: scale(0.85); }
+}
+
+.status-text {
+    font-family: var(--font-mono, monospace);
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.8px;
+    color: #38bdf8;
+    text-transform: uppercase;
+}
+
+/* ─── Main Content Deck ──────────────────────────────────────────────── */
+.quantum-main {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    padding: 20px 24px;
+    gap: 16px;
+    width: 100%;
+    max-width: 900px;
+    margin: 0 auto;
+}
+
+/* ─── Neural Messages Stream ─────────────────────────────────────────── */
+.neural-stream {
+    flex: 1;
+    min-height: 240px;
+    max-height: 420px;
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding: 16px 20px;
+    background: rgba(0, 0, 0, 0.35);
+    border: 1px solid rgba(0, 255, 255, 0.12);
+    border-radius: 20px;
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    scroll-behavior: smooth;
+}
+
+.neural-stream::-webkit-scrollbar {
+    width: 6px;
+}
+.neural-stream::-webkit-scrollbar-thumb {
+    background: rgba(0, 255, 255, 0.2);
+    border-radius: 3px;
+}
+
+/* Welcome Card (Clean, Trustworthy, Zen) */
+.welcome-matrix {
+    margin: auto 0;
+    display: flex;
+    justify-content: center;
+}
+
+.neural-welcome {
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.03), rgba(0, 255, 255, 0.03));
+    border: 1px solid rgba(0, 255, 255, 0.2);
+    border-radius: 20px;
+    padding: 28px 24px;
+    text-align: center;
+    max-width: 580px;
+    margin: 0 auto;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
+}
+
+.welcome-icon-wrap {
+    width: 56px;
+    height: 56px;
+    border-radius: 50%;
+    background: rgba(0, 255, 255, 0.1);
+    border: 1px solid rgba(0, 255, 255, 0.3);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 26px;
+    margin: 0 auto 16px;
+    box-shadow: 0 0 20px rgba(0, 255, 255, 0.2);
+}
+
+.welcome-title {
+    font-size: 22px;
+    font-weight: 700;
+    color: #f8fafc;
+    letter-spacing: -0.3px;
+    margin-bottom: 10px;
+}
+
+.welcome-desc {
+    font-size: 14px;
+    line-height: 1.6;
+    color: #94a3b8;
+    margin-bottom: 16px;
+}
+
+.welcome-tip {
+    font-size: 13px;
+    color: #38bdf8;
+    background: rgba(56, 189, 248, 0.08);
+    border: 1px dashed rgba(56, 189, 248, 0.3);
+    border-radius: 10px;
+    padding: 10px 14px;
+}
+
+.welcome-tip kbd {
+    background: rgba(255, 255, 255, 0.1);
+    padding: 2px 6px;
+    border-radius: 4px;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    color: #fff;
+    font-family: var(--font-mono, monospace);
+    font-size: 11px;
+}
+
+/* Subtitles */
+.holo-subtitles-container {
+    min-height: 28px;
+    text-align: center;
+    font-family: var(--font-mono, monospace);
+    font-size: 14px;
+    font-weight: 600;
+    color: #00ffff;
+    text-shadow: 0 0 12px rgba(0, 255, 255, 0.6);
+    transition: opacity 0.3s ease;
+}
+
+.holo-subtitles-container.fade-out {
+    opacity: 0;
+}
+
+/* ─── Quantum Controls (Orbe Vocal Central) ─────────────────────────── */
+.quantum-controls {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 16px;
+    padding: 18px 24px;
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.03), rgba(0, 255, 255, 0.02));
+    border: 1px solid rgba(0, 255, 255, 0.15);
+    border-radius: 22px;
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    position: relative;
+}
+
+.control-matrix {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    width: 100%;
+}
+
+.neural-record-btn {
+    width: 150px;
+    height: 150px;
+    border: none;
+    border-radius: 50%;
+    position: relative;
+    cursor: pointer;
+    background: transparent;
+    transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.25s ease;
+    user-select: none;
+    outline: none;
+}
+
+.neural-record-btn:hover {
+    transform: scale(1.04);
+}
+
+.neural-record-btn:active {
+    transform: scale(0.94);
+}
+
+.neural-record-btn .btn-label {
+    font-family: var(--font-mono, monospace);
+    font-size: 13px;
+    font-weight: 800;
+    letter-spacing: 1px;
+    color: #fff;
+    text-shadow: 0 0 8px rgba(0, 0, 0, 0.8);
+}
+
+.neural-record-btn .btn-sublabel {
+    font-size: 10px;
+    color: rgba(255, 255, 255, 0.85);
+    margin-top: 2px;
+}
+
+.quantum-clear-btn {
+    position: absolute;
+    right: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    background: rgba(255, 255, 255, 0.05);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+}
+
+.quantum-clear-btn:hover {
+    background: rgba(236, 72, 153, 0.15);
+    border-color: rgba(236, 72, 153, 0.4);
+    box-shadow: 0 0 15px rgba(236, 72, 153, 0.3);
+}
+
+.neural-monitor {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.monitor-bars {
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    height: 16px;
+}
+
+.monitor-bars .bar {
+    width: 3px;
+    height: 8px;
+    background: #00ffff;
+    border-radius: 2px;
+    animation: bar-pulse 1.2s infinite ease-in-out var(--delay, 0s);
+}
+
+@keyframes bar-pulse {
+    0%, 100% { height: 6px; opacity: 0.4; }
+    50% { height: 16px; opacity: 1; }
+}
+
+.monitor-label {
+    font-family: var(--font-mono, monospace);
+    font-size: 10px;
+    letter-spacing: 1px;
+    color: #64748b;
+    font-weight: 600;
+}
+
+/* ─── Direct Input Bar (Clean & Instant) ─────────────────────────────── */
+.direct-input-bar {
+    width: 100%;
+}
+
+.input-wrapper {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: rgba(0, 0, 0, 0.5);
+    border: 1px solid rgba(0, 255, 255, 0.25);
+    border-radius: 16px;
+    padding: 6px 8px 6px 16px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.input-wrapper:focus-within {
+    border-color: #00ffff;
+    box-shadow: 0 0 20px rgba(0, 255, 255, 0.2);
+}
+
+.direct-text-input {
+    flex: 1;
+    background: transparent;
+    border: none;
+    outline: none;
+    color: #f8fafc;
+    font-family: var(--font-primary, sans-serif);
+    font-size: 15px;
+    padding: 8px 0;
+}
+
+.direct-text-input::placeholder {
+    color: #64748b;
+}
+
+.direct-send-btn {
+    width: 42px;
+    height: 42px;
+    border-radius: 12px;
+    border: none;
+    background: linear-gradient(135deg, #00ffff, #8b5cf6);
+    color: #000;
+    font-size: 16px;
+    font-weight: bold;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+.direct-send-btn:hover:not(:disabled) {
+    transform: scale(1.05);
+    box-shadow: 0 0 15px rgba(0, 255, 255, 0.4);
+}
+
+.direct-send-btn:disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+}
+
+/* ─── Desktop View Specific (>= 768px) ───────────────────────────────── */
+@media screen and (min-width: 768px) {
+    body {
+        display: flex;
+        justify-content: center;
+        align-items: flex-start;
+        background-color: var(--quantum-black, #000);
+        overflow-y: auto;
+        overflow-x: hidden;
+        min-height: 100vh;
+        padding: 24px 16px;
+    }
+
+    .holo-container {
+        width: 100%;
+        max-width: 960px;
+        min-height: calc(100vh - 48px);
+        margin: 0 auto;
+        border-radius: 28px;
+        border: 1px solid rgba(0, 255, 255, 0.2);
+        box-shadow: 
+            0 0 40px rgba(0, 255, 255, 0.08), 
+            0 0 80px rgba(139, 92, 246, 0.08),
+            inset 0 0 24px rgba(255, 255, 255, 0.02);
+        background: var(--holo-dark-bg);
+        backdrop-filter: blur(25px);
+        -webkit-backdrop-filter: blur(25px);
+        display: flex;
+        flex-direction: column;
+    }
+
+    .quantum-header {
+        padding: 20px 28px 16px;
+        border-bottom: 1px solid rgba(0, 255, 255, 0.1);
+    }
+
+    .desktop-bio-bar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 12px 28px;
+        background: rgba(0, 0, 0, 0.4);
+        border-top: 1px solid rgba(0, 255, 255, 0.1);
+        font-family: var(--font-mono, monospace);
+        font-size: 12px;
+        color: #94a3b8;
+        border-bottom-left-radius: 28px;
+        border-bottom-right-radius: 28px;
+    }
+
+    .bio-hud-cluster {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    .bio-hud-indicator {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: #00ffff;
+        box-shadow: 0 0 10px #00ffff;
+    }
+
+    .bio-hud-label {
+        color: #64748b;
+        font-weight: 600;
+    }
+
+    .bio-hud-val {
+        color: #38bdf8;
+        font-weight: 700;
+    }
+
+    .bio-hud-sep {
+        color: #475569;
+        margin: 0 4px;
+    }
+
+    .desktop-shortcuts-guide {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+    }
+
+    .shortcut-item {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        color: #cbd5e1;
+    }
+
+    .shortcut-item kbd {
+        background: rgba(255, 255, 255, 0.08);
+        border: 1px solid rgba(0, 255, 255, 0.3);
+        border-radius: 5px;
+        padding: 2px 6px;
+        color: #00ffff;
+        font-size: 11px;
+        font-family: inherit;
+    }
+}
+
+/* ─── Mobile View Specific (< 768px) ─────────────────────────────────── */
+@media screen and (max-width: 767px) {
+    .desktop-bio-bar {
+        display: none !important;
+    }
+
+    .holo-container {
+        border-radius: 0;
+        border: none;
+        min-height: 100vh;
+    }
+
+    .quantum-header {
+        padding: 16px;
+    }
+
+    .quantum-main {
+        padding: 14px 16px;
+    }
+
+    .neural-record-btn {
+        width: 130px;
+        height: 130px;
+    }
+
+    .header-main-row {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 12px;
+    }
+
+    .header-extra-tools {
+        width: 100%;
+        justify-content: flex-end;
+    }
+}

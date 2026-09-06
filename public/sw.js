@@ -18,7 +18,9 @@ const STATIC_PATHS = [
 self.addEventListener('install', (e) => {
   e.waitUntil((async () => {
     const cache = await caches.open(CACHE_NAME);
-    await cache.addAll(STATIC_PATHS);
+    await Promise.allSettled(
+      STATIC_PATHS.map(path => cache.add(path).catch(err => console.warn('[SW] Cache miss:', path, err)))
+    );
     self.skipWaiting();
   })());
 });

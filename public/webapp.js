@@ -263,7 +263,9 @@ var init_dist = __esm({
           return;
         }
         const index = listeners.indexOf(listenerFunc);
-        this.listeners[eventName].splice(index, 1);
+        if (index !== -1) {
+          this.listeners[eventName].splice(index, 1);
+        }
         if (!this.listeners[eventName].length) {
           this.removeWindowListener(this.windowListeners[eventName]);
         }
@@ -12037,16 +12039,30 @@ function feminizeFrenchText(text) {
     "emb\xEAt\xE9": "emb\xEAt\xE9e",
     "inquiet": "inqui\xE8te",
     "attentif": "attentive",
-    "actif": "active"
+    "actif": "active",
+    "fier": "fi\xE8re",
+    "curieux": "curieuse",
+    "touch\xE9": "touch\xE9e",
+    "\xE9mu": "\xE9mue",
+    "reconnaissant": "reconnaissante",
+    "satisfait": "satisfaite",
+    "amus\xE9": "amus\xE9e",
+    "choy\xE9": "choy\xE9e",
+    "gentil": "gentille",
+    "parti": "partie",
+    "venu": "venue",
+    "arriv\xE9": "arriv\xE9e",
+    "rest\xE9": "rest\xE9e"
   };
-  const selfRefRegex = /\b(je\s+suis|chui|j'suis|je\s+serai|j'ai\s+été|je\s+me\s+sens|je\s+suis\s+devenue)\s+([a-zA-ZàâäéèêëîïôöùûüçÉÈÊËÀÂÄÔÖÙÛÜÇ]+)\b/gi;
+  const selfRefRegex = /\b(je\s+suis|chui|j'suis|je\s+serai|j'ai\s+été|je\s+me\s+sens|je\s+suis\s+devenue)(?:\s+(?:vraiment|très|ben|bien|tout\s+à\s+fait|tellement|toujours|assez|super|trop))?\s+([a-zA-ZàâäéèêëîïôöùûüçÉÈÊËÀÂÄÔÖÙÛÜÇ]+)\b/gi;
   result = result.replace(selfRefRegex, (match, verb, adj) => {
     const lowerAdj = adj.toLowerCase();
     if (adjMap[lowerAdj]) {
       const feminineAdj = adjMap[lowerAdj];
       const isCapital = adj.charAt(0) === adj.charAt(0).toUpperCase() && adj.charAt(0) !== adj.charAt(0).toLowerCase();
       const finalAdj = isCapital ? feminineAdj.charAt(0).toUpperCase() + feminineAdj.slice(1) : feminineAdj;
-      return `${verb} ${finalAdj}`;
+      const adverbSpace = match.slice(verb.length, match.length - adj.length);
+      return `${verb}${adverbSpace}${finalAdj}`;
     }
     return match;
   });
@@ -12343,12 +12359,12 @@ var UltraBlablaLiveApp = class _UltraBlablaLiveApp {
     }
   }
   async initNextGenWeb() {
-    if ("serviceWorker" in navigator) {
+    if ("serviceWorker" in navigator && !navigator.serviceWorker.controller) {
       try {
         await navigator.serviceWorker.register("/sw.js");
         console.log("[Web Next-Gen] Service Worker actif.");
       } catch (err) {
-        console.error("[Web Next-Gen] Erreur SW:", err);
+        console.warn("[Web Next-Gen] Notice SW:", err);
       }
     }
     if (typeof window.turnstile !== "undefined") {
@@ -12604,8 +12620,9 @@ var UltraBlablaLiveApp = class _UltraBlablaLiveApp {
         video: false
       });
       const source = ctx.createMediaStreamSource(stream);
-      const vadWsUrl = window.__VAD_WS_URL__ || "wss://silero-vad-webgpu-do.g-meingan.workers.dev/ws";
-      try {
+      const forceWsVad = !!window.__FORCE_WS_VAD__;
+      if (forceWsVad) {
+        const vadWsUrl = window.__VAD_WS_URL__ || "wss://silero-vad-webgpu-do.g-meingan.workers.dev/ws";
         this.neuralVad = new WsNeuralVad({
           wsUrl: vadWsUrl,
           minSpeechMs: 160,
@@ -12615,9 +12632,9 @@ var UltraBlablaLiveApp = class _UltraBlablaLiveApp {
           rmsFallbackThreshold: 0.012
         });
         this.vad = this.neuralVad;
-      } catch {
+      } else {
         this.neuralVad = new NeuralVad({
-          modelVariant: "fp32",
+          modelVariant: "int8",
           minSpeechMs: 160,
           silenceMs: 380,
           speechThreshold: 0.5,
@@ -12626,7 +12643,7 @@ var UltraBlablaLiveApp = class _UltraBlablaLiveApp {
         });
         this.vad = this.neuralVad;
       }
-      this.neuralVad.on("speech_end", () => {
+      this.neuralVad?.on("speech_end", () => {
         if (this.state === "listening") {
           this.vad?.reset();
           void this.finishUtterance();

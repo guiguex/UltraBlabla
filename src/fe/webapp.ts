@@ -104,12 +104,12 @@ class UltraBlablaLiveApp {
 
     private async initNextGenWeb() {
         // Enregistrement PWA Service Worker (Next-Gen Offline)
-        if ('serviceWorker' in navigator) {
+        if ('serviceWorker' in navigator && !navigator.serviceWorker.controller) {
             try {
                 await navigator.serviceWorker.register('/sw.js');
                 console.log('[Web Next-Gen] Service Worker actif.');
             } catch (err) {
-                console.error('[Web Next-Gen] Erreur SW:', err);
+                console.warn('[Web Next-Gen] Notice SW:', err);
             }
         }
 
@@ -409,11 +409,12 @@ class UltraBlablaLiveApp {
             });
             const source = ctx.createMediaStreamSource(stream);
 
-            // VAD via WebSocket Worker DO (WebGPU ONNX server-side).
-            // Plus d'ONNX dans le browser -> plus de problemes MIME/crossOrigin/CSP.
-            // Fallback automatique sur NeuralVad local si WS_URL absent ou KO.
-            const vadWsUrl = (window as any).__VAD_WS_URL__ || 'wss://silero-vad-webgpu-do.g-meingan.workers.dev/ws';
-            try {
+            // VAD Silero ONNX locale ultra-rapide (model_int8.onnx, 639 KB, 0ms latence réseau)
+            // Priorité absolue au local dans le navigateur pour éliminer la dépendance et la latence internet.
+            // Si __FORCE_WS_VAD__ est spécifié, bascule sur le Worker WebSocket distant.
+            const forceWsVad = !!(window as any).__FORCE_WS_VAD__;
+            if (forceWsVad) {
+                const vadWsUrl = (window as any).__VAD_WS_URL__ || 'wss://silero-vad-webgpu-do.g-meingan.workers.dev/ws';
                 this.neuralVad = new WsNeuralVad({
                     wsUrl: vadWsUrl,
                     minSpeechMs: 160,
@@ -423,10 +424,9 @@ class UltraBlablaLiveApp {
                     rmsFallbackThreshold: 0.012,
                 }) as any;
                 this.vad = this.neuralVad as any;
-            } catch {
-                // Fallback local (mieux que rien)
+            } else {
                 this.neuralVad = new NeuralVad({
-                    modelVariant: 'fp32',
+                    modelVariant: 'int8',
                     minSpeechMs: 160,
                     silenceMs: 380,
                     speechThreshold: 0.50,
@@ -436,7 +436,7 @@ class UltraBlablaLiveApp {
                 this.vad = this.neuralVad;
             }
 
-            this.neuralVad.on('speech_end', () => {
+            this.neuralVad?.on('speech_end', () => {
                 if (this.state === 'listening') {
                     this.vad?.reset();
                     void this.finishUtterance();

@@ -192,20 +192,11 @@
     <script type="module" src="webapp.js"></script>
     <script>
         if ('serviceWorker' in navigator) {
-            window.addEventListener('load', async () => {
-                try {
-                    const registrations = await navigator.serviceWorker.getRegistrations();
-                    for (const reg of registrations) {
-                        const script = reg.active?.scriptURL || reg.installing?.scriptURL || reg.waiting?.scriptURL || '';
-                        if (script && !script.endsWith('/sw.js')) {
-                            await reg.unregister();
-                        }
-                    }
-                    const reg = await navigator.serviceWorker.register('/sw.js');
-                    console.log('SW actif:', reg.scope);
-                } catch (err) {
-                    console.warn('SW registration:', err);
-                }
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('sw.js').then(reg => {
+                    reg.update();
+                    console.log('SW registered:', reg.scope);
+                }).catch(err => console.error('SW error:', err));
             });
         }
     </script>

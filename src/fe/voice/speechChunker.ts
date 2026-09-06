@@ -45,8 +45,10 @@ export function formatQuebecProsody(rawText: string): string {
 
 /**
  * Extrait la prochaine clause vocale complète d'un buffer de streaming.
+ * @param buffer Buffer de texte accumulé
+ * @param allowCommaBreak Si true (premier souffle), permet de découper sur une virgule ou point-virgule pour TTFA ultra-rapide
  */
-export function extractNextSpeechChunk(buffer: string): SpeechChunkResult | null {
+export function extractNextSpeechChunk(buffer: string, allowCommaBreak = false): SpeechChunkResult | null {
   if (!buffer || buffer.length === 0) return null;
 
   // 1. Masquage des points d'abréviations et décimales pour éviter les fausses coupures
@@ -54,9 +56,11 @@ export function extractNextSpeechChunk(buffer: string): SpeechChunkResult | null
     .replace(/\b(M|Mme|Mlle|Dr|Prof|St|Ste|vs|ex|etc|N\.B|QC|CAD)\./gi, '$1__DOT__')
     .replace(/(\d+)\.(\d+)/g, '$1__DOT__$2');
 
-  // 2. Détection de frontière de phrase ou de clause forte (. ! ? : ; \n)
-  const sentenceEndPattern = /([^.!?:;\n]+[.!?:\n]+)/;
-  const match = masked.match(sentenceEndPattern);
+  // 2. Détection de frontière de phrase (. ! ? : ; \n) ou virgule si allowCommaBreak (premier souffle rapide)
+  const pattern = allowCommaBreak
+    ? /([^.!?:;,\n]+[.!?:\n]+|[^.!?:;,\n]{4,}[,;]+)/
+    : /([^.!?:;\n]+[.!?:\n]+)/;
+  const match = masked.match(pattern);
 
   if (!match || match.index === undefined) {
     return null;

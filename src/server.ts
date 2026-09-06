@@ -464,6 +464,15 @@ app.all(['/api/chat', '/v1/chat/completions'], async (req, res) => {
 });
 
 // ─── Fichiers Statiques PWA & UI ──────────────────────────────────
+app.use('/onnxruntime-web', express.static(path.resolve(process.cwd(), 'node_modules/onnxruntime-web/dist')));
+
+app.get('/sw.js', (_req, res) => {
+  res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
+  res.setHeader('Service-Worker-Allowed', '/');
+  res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+  res.sendFile(path.join(PUBLIC_DIR, 'sw.js'));
+});
+
 app.use(express.static(PUBLIC_DIR));
 
 app.get('/', (_req, res) => {
@@ -575,6 +584,25 @@ N'utilise JAMAIS de syntaxe Markdown (*, #, tirets), ni d'emojis, ni de robotism
     let firstAudioSent = false;
     let ttfaMs = 0;
 
+    // Cache pour la disponibilité du TTS Docker C++ local
+    let localTtsAvailable = false;
+    let lastLocalTtsCheck = 0;
+
+    const isLocalTtsUp = async (): Promise<boolean> => {
+      const now = Date.now();
+      if (now - lastLocalTtsCheck < 5000) return localTtsAvailable;
+      lastLocalTtsCheck = now;
+      try {
+        const res = await fetch(`${TTS_BACKEND_URL}/v1/models`, {
+          signal: AbortSignal.timeout(120)
+        });
+        localTtsAvailable = res.ok;
+      } catch {
+        localTtsAvailable = false;
+      }
+      return localTtsAvailable;
+    };
+
     // Synthèse audio québécoise avec priorité Docker local puis Cloud PCM
     const synthesizeClause = async (clause: string) => {
       if (abortCtrl.signal.aborted) return;
@@ -584,27 +612,32 @@ N'utilise JAMAIS de syntaxe Markdown (*, #, tirets), ni d'emojis, ni de robotism
       }
       if (!clean || clean.length < 2) return;
 
-      // 1) Essai Local C++ (timeout rapide 400ms pour ne jamais pénaliser le TTFA si absent)
-      try {
-        const localTts = await fetch(`${TTS_BACKEND_URL}/v1/audio/speech`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ input: clean, voice, response_format: 'pcm' }),
-          signal: AbortSignal.any([abortCtrl.signal, AbortSignal.timeout(400)])
-        });
-        if (localTts.ok) {
-          const pcmBuf = await localTts.arrayBuffer();
-          if (pcmBuf.byteLength > 0 && !abortCtrl.signal.aborted) {
-            const b64 = Buffer.from(pcmBuf).toString('base64');
-            if (!firstAudioSent) {
-              firstAudioSent = true;
-              ttfaMs = Date.now() - startMs;
+      // 1) Essai Local C++ uniquement si le conteneur est en ligne (0ms de pénalité si absent)
+      const localUp = await isLocalTtsUp();
+      if (localUp) {
+        try {
+          const localTts = await fetch(`${TTS_BACKEND_URL}/v1/audio/speech`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ input: clean, voice, response_format: 'pcm' }),
+            signal: AbortSignal.any([abortCtrl.signal, AbortSignal.timeout(600)])
+          });
+          if (localTts.ok) {
+            const pcmBuf = await localTts.arrayBuffer();
+            if (pcmBuf.byteLength > 0 && !abortCtrl.signal.aborted) {
+              const b64 = Buffer.from(pcmBuf).toString('base64');
+              if (!firstAudioSent) {
+                firstAudioSent = true;
+                ttfaMs = Date.now() - startMs;
+              }
+              ws.send(JSON.stringify({ type: 'audio', data: b64, format: 'pcm' }));
+              return;
             }
-            ws.send(JSON.stringify({ type: 'audio', data: b64, format: 'pcm' }));
-            return;
           }
+        } catch {
+          localTtsAvailable = false;
         }
-      } catch {}
+      }
 
       // 2) Fallback Cloud TTS SOTA (api.guig.dev)
       try {
@@ -638,6 +671,16 @@ N'utilise JAMAIS de syntaxe Markdown (*, #, tirets), ni d'emojis, ni de robotism
       } catch {}
     };
 
+    // File d'attente ordonnée non-bloquante pour pipeliner la synthèse audio sans freiner la génération de texte
+    let ttsQueue = Promise.resolve();
+    const enqueueClause = (clause: string) => {
+      ttsQueue = ttsQueue.then(async () => {
+        if (!abortCtrl.signal.aborted) {
+          await synthesizeClause(clause);
+        }
+      }).catch(err => console.warn('[TTS Queue error]', err));
+    };
+
     try {
       // Priorité 1: Gemini Stream si clé configurée
       const gemini = getGemini();
@@ -662,26 +705,29 @@ N'utilise JAMAIS de syntaxe Markdown (*, #, tirets), ni d'emojis, ni de robotism
               sentenceBuf += delta;
               ws.send(JSON.stringify({ type: 'token', content: delta }));
 
-              // 1. Détection de chunk complet avec masquage prosodique québécois
+              // 1. Détection de chunk complet avec masquage prosodique québécois (découpe sur virgule pour 1er souffle)
               while (true) {
-                const speechChunk = extractNextSpeechChunk(sentenceBuf);
+                const speechChunk = extractNextSpeechChunk(sentenceBuf, !firstAudioSent);
                 if (!speechChunk) break;
                 sentenceBuf = speechChunk.remaining;
-                if (speechChunk.chunk) await synthesizeClause(speechChunk.chunk);
+                if (speechChunk.chunk) enqueueClause(speechChunk.chunk);
               }
 
-              // 2. Amorce rapide de premier souffle (TTFA < 500ms) si virgule ou mot d'amorce
-              if (!firstAudioSent && sentenceBuf.length >= 18 && /\s$/.test(sentenceBuf)) {
+              // 2. Amorce rapide de premier souffle (TTFA < 500ms) si début de phrase fluide
+              if (!firstAudioSent && sentenceBuf.length >= 16 && /\s$/.test(sentenceBuf)) {
                 const clause = sentenceBuf.trim();
                 sentenceBuf = '';
-                if (clause) await synthesizeClause(clause);
+                if (clause) enqueueClause(clause);
               }
             }
           }
 
           if (sentenceBuf.trim() && !abortCtrl.signal.aborted) {
-            await synthesizeClause(sentenceBuf);
+            enqueueClause(sentenceBuf);
           }
+
+          // Attendre la fin de diffusion de la file TTS
+          await ttsQueue;
 
           if (!abortCtrl.signal.aborted && fullText.trim()) {
             ws.send(JSON.stringify({
@@ -748,17 +794,17 @@ N'utilise JAMAIS de syntaxe Markdown (*, #, tirets), ni d'emojis, ni de robotism
 
                   // 1. Détection de chunk complet avec masquage prosodique québécois
                   while (true) {
-                    const speechChunk = extractNextSpeechChunk(sentenceBuf);
+                    const speechChunk = extractNextSpeechChunk(sentenceBuf, !firstAudioSent);
                     if (!speechChunk) break;
                     sentenceBuf = speechChunk.remaining;
-                    if (speechChunk.chunk) await synthesizeClause(speechChunk.chunk);
+                    if (speechChunk.chunk) enqueueClause(speechChunk.chunk);
                   }
 
                   // 2. Amorce rapide de premier souffle (TTFA < 500ms)
-                  if (!firstAudioSent && sentenceBuf.length >= 18 && /\s$/.test(sentenceBuf)) {
+                  if (!firstAudioSent && sentenceBuf.length >= 16 && /\s$/.test(sentenceBuf)) {
                     const clause = sentenceBuf.trim();
                     sentenceBuf = '';
-                    if (clause) await synthesizeClause(clause);
+                    if (clause) enqueueClause(clause);
                   }
                 }
               } catch {}
@@ -766,8 +812,10 @@ N'utilise JAMAIS de syntaxe Markdown (*, #, tirets), ni d'emojis, ni de robotism
           }
 
           if (sentenceBuf.trim() && !abortCtrl.signal.aborted) {
-            await synthesizeClause(sentenceBuf);
+            enqueueClause(sentenceBuf);
           }
+
+          await ttsQueue;
 
           if (!abortCtrl.signal.aborted) {
             ws.send(JSON.stringify({

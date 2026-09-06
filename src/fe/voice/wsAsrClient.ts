@@ -123,7 +123,7 @@ export class WsAsrClient {
     }
 
     this.ws.onopen = () => {
-      if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
+      if (!this.ws || (this.ws.readyState !== 1 && this.ws.readyState !== (WebSocket as any).OPEN)) return;
       const msg: AsrClientMsg = { type: 'start', language: this.language, sample_rate: this.sampleRate };
       try {
         this.ws.send(JSON.stringify(msg));
@@ -131,7 +131,7 @@ export class WsAsrClient {
 
       if (this.pendingPcm.length > 0) {
         for (const pcm of this.pendingPcm) {
-          if (this.ws.readyState !== WebSocket.OPEN) break;
+          if (this.ws.readyState !== 1 && this.ws.readyState !== (WebSocket as any).OPEN) break;
           const frameMsg: AsrPcm = { type: 'pcm', seq: this.seq++, data: toB64(pcm) };
           try {
             this.ws.send(JSON.stringify(frameMsg));
@@ -187,13 +187,13 @@ export class WsAsrClient {
   }
 
   sendPcm(pcm: Int16Array): void {
-    if (!this.ws || this.ws.readyState === WebSocket.CONNECTING) {
+    if (!this.ws || this.ws.readyState === 0 || this.ws.readyState === (WebSocket as any).CONNECTING) {
       if (this.pendingPcm.length < 50) {
         this.pendingPcm.push(pcm);
       }
       return;
     }
-    if (this.ws.readyState !== WebSocket.OPEN) return;
+    if (this.ws.readyState !== 1 && this.ws.readyState !== (WebSocket as any).OPEN) return;
     try {
       const msg: AsrPcm = { type: 'pcm', seq: this.seq++, data: toB64(pcm) };
       this.ws.send(JSON.stringify(msg));
@@ -206,7 +206,7 @@ export class WsAsrClient {
       this.nativeRec = null;
     }
 
-    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+    if (!this.ws || (this.ws.readyState !== 1 && this.ws.readyState !== (WebSocket as any).OPEN)) {
       const text = this.lastRecognizedText;
       if (this.pendingStop) {
         this.pendingStop.resolve(text);

@@ -3,16 +3,18 @@
  * 1-Click Zero Friction • Fluid Adaptive VAD • Adapted for Next Gen Design
  */
 import { Capacitor } from '@capacitor/core';
-import { WsAsrClient, WsVoiceClient, AudioChunkPlayer, Vad, startPcmCapture, FallbackTts } from './voice/index';
+import { WsAsrClient, WsVoiceClient, AudioChunkPlayer, Vad, NeuralVad, startPcmCapture, FallbackTts, isFemaleVoice, feminizeFrenchText, buildGenderAwareSystemPrompt } from './voice/index';
 import type { VoiceId } from './voice/types';
 
 const IS_WEB = Capacitor.getPlatform() === 'web';
 
 type LiveState = 'idle' | 'listening' | 'thinking' | 'speaking';
 
-const FAST_VOICE_SYSTEM_PROMPT = `Tu es UltraBlabla, une IA vocale ultra-réactive, vive et intelligente.
-Réponds de manière concise, directe et naturelle (1 à 2 phrases percutantes à l'oral, ≤ 20 mots).
-Commence toujours ta réponse par un mot d'amorce court (ex: "Oui,", "D'accord,", "Absolument,", "Bien sûr,").
+const BASE_QUEBEC_SYSTEM_PROMPT = `Tu es un compagnon vocal québécois authentique, chaleureux, complice et vif d'esprit.
+Réponds en français québécois parlé naturel de manière concise et fluide (1 à 2 phrases percutantes à l'oral, ≤ 20 mots au total).
+Varie naturellement tes expressions et tics de langage québécois (ex: "genre", "écoute", "faque", "c'est sûr", "ben oui", "en tout cas", "t'sais").
+IMPORTANT: Ne répète pas "t'sais" à chaque phrase ! Dose avec modération et utilise souvent "genre", "écoute" ou "faque" pour que la conversation reste spontanée, vivante et équilibrée.
+Commence souvent par un mot d'amorce court (ex: "Oui,", "Ben,", "Écoute,", "D'accord,", "En fait,").
 Jamais de syntaxe Markdown (*, #, tirets), ni d'emojis, ni de robotismes.`;
 const FAST_LLM_MODEL = '@cf/meta/llama-3.1-8b-instruct-fast';
 
@@ -24,7 +26,8 @@ class UltraBlablaLiveApp {
     private wsAsr?: WsAsrClient;
     private wsVoice?: WsVoiceClient;
     private player?: AudioChunkPlayer;
-    private vad?: Vad;
+    private vad?: Vad | NeuralVad;
+    private neuralVad?: NeuralVad;
     private capture?: { stop(): void };
     private vadInterval?: ReturnType<typeof setInterval>;
     private lastRms = 0;
@@ -46,6 +49,8 @@ class UltraBlablaLiveApp {
     private clearBtn!: HTMLButtonElement;
     private holoSubtitles!: HTMLElement;
     private holoSubtitlesTimeout: number | null = null;
+    private voiceSelect?: HTMLSelectElement;
+    private activeVoice: VoiceId = 'remi';
 
     // Text Chat Box Elements
     private chatToggleBtn: HTMLButtonElement | null = null;
@@ -128,9 +133,22 @@ class UltraBlablaLiveApp {
         this.status = document.querySelector('#status .status-text') as HTMLElement;
         this.clearBtn = document.getElementById('clearBtn') as HTMLButtonElement;
         this.holoSubtitles = document.getElementById('holo-subtitles') as HTMLElement;
+        this.voiceSelect = document.getElementById('voiceSelector') as HTMLSelectElement;
+
+        const saved = (localStorage.getItem('ultrablabla_voice') as VoiceId) || 'remi';
+        this.activeVoice = saved;
+        if (this.voiceSelect) this.voiceSelect.value = saved;
     }
 
     private setupListeners() {
+        // Sélection de voix dynamique
+        this.voiceSelect?.addEventListener('change', () => {
+            const nextVoice = (this.voiceSelect?.value as VoiceId) || 'remi';
+            this.activeVoice = nextVoice;
+            localStorage.setItem('ultrablabla_voice', nextVoice);
+            this.addMessage('SYSTEM', `Voix active : ${this.voiceDisplayName(nextVoice)}`, 'system');
+        });
+
         // Toggle on Main Button
         this.recordBtn?.addEventListener('click', () => this.toggleLiveSession());
 
@@ -233,7 +251,7 @@ class UltraBlablaLiveApp {
 
         this.wsVoice.chat(text, {
             voice: this.currentVoice(),
-            system: FAST_VOICE_SYSTEM_PROMPT,
+            system: buildGenderAwareSystemPrompt(this.currentVoice(), BASE_QUEBEC_SYSTEM_PROMPT),
             model: FAST_LLM_MODEL
         });
     }
@@ -268,9 +286,12 @@ class UltraBlablaLiveApp {
 
         this.wsVoice.on('done', (msg) => {
             console.info('voice_ttfa:', msg.ttfa_ms);
-            const finalContent = msg.content || responseText;
+            let finalContent = msg.content || responseText;
+            if (isFemaleVoice(this.currentVoice())) {
+                finalContent = feminizeFrenchText(finalContent);
+            }
             if (finalContent.trim()) {
-                this.addMessage('GUILLAUME', finalContent, 'ai');
+                this.addMessage(this.voiceDisplayName(this.currentVoice()), finalContent, 'ai');
             }
             if (!responseReceived) {
                 if (finalContent.trim()) {
@@ -297,9 +318,10 @@ class UltraBlablaLiveApp {
         this.wsVoice.on('error', (msg) => {
             this.showError(`Voix: ${msg.message}`);
             if (responseText.trim() && !responseReceived) {
-                this.addMessage('GUILLAUME', responseText, 'ai');
+                const textToSpeak = isFemaleVoice(this.currentVoice()) ? feminizeFrenchText(responseText) : responseText;
+                this.addMessage(this.voiceDisplayName(this.currentVoice()), textToSpeak, 'ai');
                 this.updateUI('speaking');
-                FallbackTts.speak(responseText, {
+                FallbackTts.speak(textToSpeak, {
                     voice: this.currentVoice(),
                     onStart: () => this.updateUI('speaking'),
                     onEnd: () => {
@@ -358,7 +380,23 @@ class UltraBlablaLiveApp {
             });
             const source = ctx.createMediaStreamSource(stream);
 
-            this.vad = new Vad({ minSpeechMs: 180, silenceMs: 380, rmsThreshold: 0.012, hardCapMs: 15000 });
+            this.neuralVad = new NeuralVad({
+                modelVariant: 'fp32',
+                minSpeechMs: 160,
+                silenceMs: 380,
+                speechThreshold: 0.50,
+                hardCapMs: 15000,
+                rmsFallbackThreshold: 0.012,
+            });
+            this.vad = this.neuralVad;
+
+            this.neuralVad.on('speech_end', () => {
+                if (this.state === 'listening') {
+                    this.vad?.reset();
+                    void this.finishUtterance();
+                }
+            });
+
             this.wsAsr = new WsAsrClient({ language: 'fr-CA' });
             this.wsVoice = new WsVoiceClient();
             this.asrReady = false;
@@ -378,6 +416,9 @@ class UltraBlablaLiveApp {
                 sampleRate: 16000,
                 frameMs: 100,
                 onFrame: (pcm) => {
+                    // Analyse neurale en continu du flux audio PCM
+                    void this.neuralVad?.pushPcm(pcm);
+
                     if (this.state === 'listening') {
                         this.wsAsr?.sendPcm(pcm);
                         // Accumuler le PCM pour Qwen2-Audio (enrichissement émotionnel)
@@ -393,14 +434,18 @@ class UltraBlablaLiveApp {
 
                     // Full-Duplex Barge-in Acoustique avec Soft Ducking
                     if (this.state === 'speaking') {
-                        if (rms >= 0.022) {
+                        const vadStats = this.neuralVad?.stats();
+                        const isSpeechProb = (vadStats?.isReady && vadStats.lastProb >= 0.55);
+                        const isSpeech = isSpeechProb || rms >= 0.022;
+
+                        if (isSpeech) {
                             if (!this.isDucked) {
                                 this.isDucked = true;
                                 this.bargeInSpeechStart = performance.now();
                                 this.player?.duck(0.12, 30);
-                            } else if ((performance.now() - (this.bargeInSpeechStart || 0)) >= 160) {
+                            } else if ((performance.now() - (this.bargeInSpeechStart || 0)) >= 140) {
                                 // Interruption confirmée par parole continue
-                                console.log('[Full-Duplex Barge-in] Interruption utilisateur confirmée.');
+                                console.log('[Full-Duplex Barge-in] Interruption utilisateur confirmée (Neural VAD + RMS).');
                                 this.isDucked = false;
                                 this.bargeInSpeechStart = null;
                                 this.stopSpeaking();
@@ -414,8 +459,8 @@ class UltraBlablaLiveApp {
                                 this.wsAsr.on('error', (msg) => console.warn('[ASR Notice]', msg.message));
                                 this.wsAsr.start();
                             }
-                        } else if (rms < 0.015 && this.isDucked) {
-                            if ((performance.now() - (this.bargeInSpeechStart || 0)) < 160) {
+                        } else if (rms < 0.015 && (!vadStats?.isReady || vadStats.lastProb < 0.35) && this.isDucked) {
+                            if ((performance.now() - (this.bargeInSpeechStart || 0)) < 140) {
                                 // Faux-positif court (toux / mhm / bruit bref) -> rétablir le volume
                                 this.isDucked = false;
                                 this.bargeInSpeechStart = null;
@@ -553,9 +598,10 @@ class UltraBlablaLiveApp {
         this.addMessage('VOUS', text, 'user');
         this.updateUI('thinking');
         this.streamHoloSubtitle(text, 2000);
+        const currentPrompt = buildGenderAwareSystemPrompt(this.currentVoice(), BASE_QUEBEC_SYSTEM_PROMPT);
         this.wsVoice?.chat(text, {
             voice: this.currentVoice(),
-            system: FAST_VOICE_SYSTEM_PROMPT,
+            system: currentPrompt,
             audio: audiob64,   // ← PCM base64 pour Qwen2-Audio
             model: FAST_LLM_MODEL,
         });
@@ -583,7 +629,17 @@ class UltraBlablaLiveApp {
         this.playChime(350, 0.06);
     }
 
-    private currentVoice(): VoiceId { return 'guillaume'; }
+    private currentVoice(): VoiceId { return this.activeVoice; }
+
+    private voiceDisplayName(voice: VoiceId): string {
+        switch (voice) {
+            case 'melissa': return 'MÉLISSA';
+            case 'emanuelle': return 'EMMANUELLE';
+            case 'remi': return 'RÉMI';
+            case 'guillaume': return 'GUILLAUME';
+            default: return voice.toUpperCase();
+        }
+    }
 
     private showError(msg: string) {
         console.error('[voice]', msg);

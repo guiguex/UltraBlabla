@@ -1,6 +1,8 @@
 export * from './types';
 export { Vad } from './vad';
 export type { VadOpts, VadState } from './vad';
+export { NeuralVad } from './neural-vad';
+export type { NeuralVadOpts, VadStats } from './neural-vad';
 export { AudioChunkPlayer } from './audioPlayer';
 export { startPcmCapture, downsample, toInt16LE, pcmWorkletSource } from './pcmWorklet';
 export type { PcmCaptureOpts, PcmCaptureHandle } from './pcmWorklet';
@@ -10,3 +12,6 @@ export { WsVoiceClient } from './wsVoiceClient';
 export type { WsVoiceClientOpts } from './wsVoiceClient';
 export { FallbackTts } from './fallbackTts';
 export type { FallbackTtsOptions } from './fallbackTts';
+export { isFemaleVoice, feminizeFrenchText, buildGenderAwareSystemPrompt } from './feminizationService';
+export { formatQuebecProsody, extractNextSpeechChunk } from './speechChunker';
+export type { SpeechChunkResult } from './speechChunker';

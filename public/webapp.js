@@ -10837,39 +10837,234 @@ var init_esm = __esm({
 // src/fe/webapp.ts
 init_dist();
 
-// src/fe/voice/vad.ts
-var Vad = class {
+// src/fe/voice/neural-vad.ts
+var CHUNK_SIZE = 512;
+var STATE_SIZE = 2 * 1 * 128;
+var NeuralVad = class {
   constructor(opts = {}) {
+    this.session = null;
+    this.ort = null;
+    this.backend = "initializing";
+    this.isLoaded = false;
+    this.loadPromise = null;
+    // Recurrent state tensor (passed between consecutive frames)
+    this.stateData = new Float32Array(STATE_SIZE);
+    this.lastProb = 0;
+    this.lastRms = 0;
+    // Latency telemetry
+    this.inferenceCount = 0;
+    this.totalLatencyMs = 0;
+    // Temporal state machine
+    this.current = "idle";
     this.speechStartedAt = null;
     this.lastSpeechAt = null;
-    this.current = "idle";
-    this.minSpeechMs = opts.minSpeechMs ?? 800;
-    this.silenceMs = opts.silenceMs ?? 1500;
-    this.rmsThreshold = opts.rmsThreshold ?? 0.02;
-    this.hardCapMs = opts.hardCapMs ?? 5e3;
+    // Sample accumulation buffer for arbitrary input chunk sizes
+    this.sampleBuffer = [];
+    // Listeners
+    this.listeners = {};
+    const variant = opts.modelVariant ?? "fp32";
+    let defaultUrl = "/models/vad/model.onnx";
+    if (variant === "uint8") defaultUrl = "/models/vad/model_uint8.onnx";
+    else if (variant === "int8") defaultUrl = "/models/vad/model_int8.onnx";
+    else if (variant === "fp16") defaultUrl = "/models/vad/model_fp16.onnx";
+    else if (variant === "q4") defaultUrl = "/models/vad/model_q4.onnx";
+    if (typeof window === "undefined") {
+      defaultUrl = `silero-vad-onnx/onnx/${variant === "fp32" ? "model.onnx" : `model_${variant}.onnx`}`;
+    }
+    this.opts = {
+      modelUrl: opts.modelUrl ?? defaultUrl,
+      modelVariant: variant,
+      speechThreshold: opts.speechThreshold ?? 0.5,
+      silenceThreshold: opts.silenceThreshold ?? 0.35,
+      minSpeechMs: opts.minSpeechMs ?? 150,
+      silenceMs: opts.silenceMs ?? 380,
+      hardCapMs: opts.hardCapMs ?? 15e3,
+      rmsFallbackThreshold: opts.rmsFallbackThreshold ?? 0.015,
+      sampleRate: opts.sampleRate ?? 16e3
+    };
+    void this.init();
   }
-  push(rms, t) {
-    const isSpeechFrame = rms >= this.rmsThreshold;
+  on(event, fn2) {
+    if (!this.listeners[event]) this.listeners[event] = /* @__PURE__ */ new Set();
+    this.listeners[event].add(fn2);
+    return () => {
+      this.listeners[event]?.delete(fn2);
+    };
+  }
+  emit(event, ...args) {
+    const set = this.listeners[event];
+    if (set) {
+      for (const fn2 of set) {
+        try {
+          fn2(...args);
+        } catch (e) {
+          console.warn(`[NeuralVad listener error]`, e);
+        }
+      }
+    }
+  }
+  async init() {
+    if (this.isLoaded) return;
+    if (this.loadPromise) return this.loadPromise;
+    this.loadPromise = (async () => {
+      try {
+        const isBrowser = typeof window !== "undefined";
+        if (isBrowser) {
+          this.ort = await Promise.resolve().then(() => (init_ort_bundle_min(), ort_bundle_min_exports));
+          this.ort.env.wasm.wasmPaths = "/onnxruntime-web/";
+          this.ort.env.wasm.simd = true;
+          this.ort.env.wasm.numThreads = Math.min(2, navigator.hardwareConcurrency ?? 2);
+          const providers = [];
+          if ("gpu" in navigator) providers.push("webgpu", "wasm");
+          else providers.push("wasm");
+          try {
+            this.session = await this.ort.InferenceSession.create(this.opts.modelUrl, {
+              executionProviders: providers,
+              graphOptimizationLevel: "all"
+            });
+            this.backend = providers.includes("webgpu") ? "webgpu" : "wasm";
+          } catch {
+            this.session = await this.ort.InferenceSession.create(this.opts.modelUrl, {
+              executionProviders: ["wasm"],
+              graphOptimizationLevel: "all"
+            });
+            this.backend = "wasm";
+          }
+        } else {
+          const dynamicImport = new Function("spec", "return import(spec)");
+          const ortModule = await dynamicImport("onnxruntime-node");
+          this.ort = ortModule.default || ortModule;
+          this.session = await this.ort.InferenceSession.create(this.opts.modelUrl);
+          this.backend = "node-cpu";
+        }
+        this.isLoaded = true;
+        this.emit("ready");
+        console.info(`[NeuralVad] Silero VAD loaded (${this.opts.modelVariant}) via ${this.backend}`);
+      } catch (err) {
+        console.warn(`[NeuralVad] Failed to load ONNX model (${err?.message}). Using RMS energy fallback.`);
+        this.backend = "rms-fallback";
+      }
+    })();
+    return this.loadPromise;
+  }
+  // Pure single 512-sample inference
+  async inferChunk(chunk512) {
+    if (!this.isLoaded || !this.session || !this.ort) {
+      let sumSq = 0;
+      for (let i = 0; i < chunk512.length; i++) sumSq += chunk512[i] * chunk512[i];
+      const rms = Math.sqrt(sumSq / chunk512.length);
+      this.lastRms = rms;
+      const fakeProb = Math.min(1, rms / (this.opts.rmsFallbackThreshold * 2));
+      this.lastProb = fakeProb;
+      return fakeProb;
+    }
+    const t0 = performance.now();
+    try {
+      const inputTensor = new this.ort.Tensor("float32", chunk512, [1, CHUNK_SIZE]);
+      const stateTensor = new this.ort.Tensor("float32", this.stateData, [2, 1, 128]);
+      const srTensor = new this.ort.Tensor("int64", BigInt64Array.from([BigInt(this.opts.sampleRate)]), [1]);
+      const feeds = {
+        input: inputTensor,
+        state: stateTensor,
+        sr: srTensor
+      };
+      const results = await this.session.run(feeds);
+      const prob = Number(results.output.data[0]);
+      const nextState = results.stateN?.data || results.state?.data;
+      if (nextState) {
+        this.stateData.set(nextState);
+      }
+      const elapsed = performance.now() - t0;
+      this.inferenceCount++;
+      this.totalLatencyMs += elapsed;
+      this.lastProb = prob;
+      return prob;
+    } catch (e) {
+      console.warn("[NeuralVad inference error]", e?.message);
+      return 0;
+    }
+  }
+  // Accepts incoming PCM audio (Int16Array or Float32Array), slices into 512 chunks, and runs VAD
+  async pushPcm(pcm, timestampMs) {
+    const t = timestampMs ?? performance.now();
+    if (pcm instanceof Int16Array) {
+      for (let i = 0; i < pcm.length; i++) {
+        this.sampleBuffer.push(pcm[i] / 32768);
+      }
+    } else {
+      for (let i = 0; i < pcm.length; i++) {
+        this.sampleBuffer.push(pcm[i]);
+      }
+    }
+    let latestProb = this.lastProb;
+    let computedAny = false;
+    while (this.sampleBuffer.length >= CHUNK_SIZE) {
+      const chunk = new Float32Array(this.sampleBuffer.slice(0, CHUNK_SIZE));
+      this.sampleBuffer.splice(0, CHUNK_SIZE);
+      let sumSq = 0;
+      for (let i = 0; i < CHUNK_SIZE; i++) sumSq += chunk[i] * chunk[i];
+      this.lastRms = Math.sqrt(sumSq / CHUNK_SIZE);
+      latestProb = await this.inferChunk(chunk);
+      computedAny = true;
+    }
+    if (!computedAny) {
+      return this.current;
+    }
+    const isSpeechFrame = latestProb >= this.opts.speechThreshold;
+    this.emit("prob", { prob: latestProb, isSpeech: isSpeechFrame, rms: this.lastRms });
+    const prevState = this.current;
     if (isSpeechFrame) {
       if (this.speechStartedAt === null) this.speechStartedAt = t;
       this.lastSpeechAt = t;
-      if (t - this.speechStartedAt >= this.hardCapMs) {
+      if (t - this.speechStartedAt >= this.opts.hardCapMs) {
         this.current = "silence";
-        return "silence";
-      }
-      if (this.current !== "speech" && t - this.speechStartedAt >= this.minSpeechMs) {
+      } else if (this.current !== "speech" && t - this.speechStartedAt >= this.opts.minSpeechMs) {
         this.current = "speech";
+        this.emit("speech_start");
       }
     } else if (this.speechStartedAt !== null) {
       const sinceCap = t - this.speechStartedAt;
-      if (sinceCap >= this.hardCapMs) {
+      if (sinceCap >= this.opts.hardCapMs) {
         this.current = "silence";
-        return "silence";
-      }
-      if (this.lastSpeechAt !== null && t - this.lastSpeechAt >= this.silenceMs) {
+      } else if (this.lastSpeechAt !== null && t - this.lastSpeechAt >= this.opts.silenceMs) {
         this.current = "silence";
-        return "silence";
       }
+    }
+    if (this.current === "silence" && prevState === "speech") {
+      this.emit("speech_end");
+    }
+    if (this.current !== prevState) {
+      this.emit("state_change", this.current);
+    }
+    return this.current;
+  }
+  // Synchronous push method for direct RMS backward-compatibility with Vad interface
+  push(rms, t) {
+    this.lastRms = rms;
+    const isSpeechFrame = this.isLoaded ? this.lastProb >= this.opts.speechThreshold : rms >= this.opts.rmsFallbackThreshold;
+    const prevState = this.current;
+    if (isSpeechFrame) {
+      if (this.speechStartedAt === null) this.speechStartedAt = t;
+      this.lastSpeechAt = t;
+      if (t - this.speechStartedAt >= this.opts.hardCapMs) {
+        this.current = "silence";
+      } else if (this.current !== "speech" && t - this.speechStartedAt >= this.opts.minSpeechMs) {
+        this.current = "speech";
+        this.emit("speech_start");
+      }
+    } else if (this.speechStartedAt !== null) {
+      const sinceCap = t - this.speechStartedAt;
+      if (sinceCap >= this.opts.hardCapMs) {
+        this.current = "silence";
+      } else if (this.lastSpeechAt !== null && t - this.lastSpeechAt >= this.opts.silenceMs) {
+        this.current = "silence";
+      }
+    }
+    if (this.current === "silence" && prevState === "speech") {
+      this.emit("speech_end");
+    }
+    if (this.current !== prevState) {
+      this.emit("state_change", this.current);
     }
     return this.current;
   }
@@ -10877,6 +11072,19 @@ var Vad = class {
     this.speechStartedAt = null;
     this.lastSpeechAt = null;
     this.current = "idle";
+    this.stateData.fill(0);
+    this.sampleBuffer = [];
+  }
+  stats() {
+    return {
+      isReady: this.isLoaded,
+      backend: this.backend,
+      modelVariant: this.opts.modelVariant,
+      inferenceCount: this.inferenceCount,
+      avgLatencyMs: this.inferenceCount > 0 ? this.totalLatencyMs / this.inferenceCount : 0,
+      lastProb: this.lastProb,
+      lastRms: this.lastRms
+    };
   }
 };
 
@@ -10951,11 +11159,65 @@ var AudioChunkPlayer = class {
         const byteOffset = (i * channels + ch2) * 2;
         if (byteOffset + 1 < bytes.byteLength) {
           const sample = dataView.getInt16(byteOffset, true);
-          channelData[i] = sample < 0 ? sample / 32768 : sample / 32767;
+          const s = sample < 0 ? sample / 32768 : sample / 32767;
+          channelData[i] = Math.max(-0.99, Math.min(0.99, s));
+        }
+      }
+      if (channelData.length > 16) {
+        const rampLen = Math.min(32, Math.floor(channelData.length / 8));
+        for (let i = 0; i < rampLen; i++) {
+          const ramp = i / rampLen;
+          channelData[i] *= ramp;
+          channelData[channelData.length - 1 - i] *= ramp;
         }
       }
     }
     return buf;
+  }
+  /**
+   * Rogne les silences morts en préservant 25ms de pré-attaque (headroom acoustique)
+   * afin que les consonnes explosives (p, t, k, c, s, ch) ne soient jamais tronquées.
+   */
+  trimSilenceHeadroom(buffer) {
+    const numChannels = buffer.numberOfChannels;
+    const sampleRate = buffer.sampleRate;
+    const length = buffer.length;
+    if (length === 0) return buffer;
+    const threshold = 6e-3;
+    let startIndex = 0;
+    let endIndex = length - 1;
+    const channelData = buffer.getChannelData(0);
+    for (let i = 0; i < length; i++) {
+      if (Math.abs(channelData[i]) > threshold) {
+        const preAttackHeadroom = Math.floor(sampleRate * 0.025);
+        startIndex = Math.max(0, i - preAttackHeadroom);
+        break;
+      }
+    }
+    for (let i = length - 1; i >= startIndex; i--) {
+      if (Math.abs(channelData[i]) > threshold) {
+        const postDecayHeadroom = Math.floor(sampleRate * 0.035);
+        endIndex = Math.min(length - 1, i + postDecayHeadroom);
+        break;
+      }
+    }
+    const newLength = endIndex - startIndex + 1;
+    if (newLength <= 0 || startIndex === 0 && endIndex === length - 1) {
+      return buffer;
+    }
+    const trimmed = this.ctx.createBuffer(numChannels, newLength, sampleRate);
+    for (let ch2 = 0; ch2 < numChannels; ch2++) {
+      const src = buffer.getChannelData(ch2);
+      const dst = trimmed.getChannelData(ch2);
+      dst.set(src.subarray(startIndex, endIndex + 1));
+      const fadeLen = Math.min(Math.floor(sampleRate * 3e-3), newLength);
+      for (let f = 0; f < fadeLen; f++) {
+        const gain = f / fadeLen;
+        dst[f] *= gain;
+        dst[newLength - 1 - f] *= gain;
+      }
+    }
+    return trimmed;
   }
   duck(targetGain = 0.15, fadeMs = 35) {
     if (!this.playing) return;
@@ -11196,7 +11458,7 @@ var WsAsrClient = class {
       return;
     }
     this.ws.onopen = () => {
-      if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
+      if (!this.ws || this.ws.readyState !== 1 && this.ws.readyState !== WebSocket.OPEN) return;
       const msg = { type: "start", language: this.language, sample_rate: this.sampleRate };
       try {
         this.ws.send(JSON.stringify(msg));
@@ -11204,7 +11466,7 @@ var WsAsrClient = class {
       }
       if (this.pendingPcm.length > 0) {
         for (const pcm of this.pendingPcm) {
-          if (this.ws.readyState !== WebSocket.OPEN) break;
+          if (this.ws.readyState !== 1 && this.ws.readyState !== WebSocket.OPEN) break;
           const frameMsg = { type: "pcm", seq: this.seq++, data: toB64(pcm) };
           try {
             this.ws.send(JSON.stringify(frameMsg));
@@ -11261,13 +11523,13 @@ var WsAsrClient = class {
     };
   }
   sendPcm(pcm) {
-    if (!this.ws || this.ws.readyState === WebSocket.CONNECTING) {
+    if (!this.ws || this.ws.readyState === 0 || this.ws.readyState === WebSocket.CONNECTING) {
       if (this.pendingPcm.length < 50) {
         this.pendingPcm.push(pcm);
       }
       return;
     }
-    if (this.ws.readyState !== WebSocket.OPEN) return;
+    if (this.ws.readyState !== 1 && this.ws.readyState !== WebSocket.OPEN) return;
     try {
       const msg = { type: "pcm", seq: this.seq++, data: toB64(pcm) };
       this.ws.send(JSON.stringify(msg));
@@ -11282,7 +11544,7 @@ var WsAsrClient = class {
       }
       this.nativeRec = null;
     }
-    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+    if (!this.ws || this.ws.readyState !== 1 && this.ws.readyState !== WebSocket.OPEN) {
       const text = this.lastRecognizedText;
       if (this.pendingStop) {
         this.pendingStop.resolve(text);
@@ -11716,11 +11978,108 @@ var FallbackTts = class {
   }
 };
 
+// src/fe/voice/feminizationService.ts
+var FEMALE_VOICE_PATTERNS = [
+  "melissa",
+  "emanuelle",
+  "emmanuelle",
+  "claire",
+  "marie",
+  "fr-female",
+  "es-female",
+  "en-female",
+  "female",
+  "femme",
+  "douce"
+];
+function isFemaleVoice(voiceId, description) {
+  if (!voiceId) return false;
+  const lowerId = voiceId.toLowerCase();
+  const lowerDesc = (description || "").toLowerCase();
+  if (FEMALE_VOICE_PATTERNS.some((p) => lowerId.includes(p) || lowerDesc.includes(p))) {
+    return true;
+  }
+  return lowerDesc.includes("femme") || lowerDesc.includes("female") || lowerDesc.includes("douce");
+}
+function feminizeFrenchText(text) {
+  if (!text || text.length === 0) return text;
+  let result = text;
+  result = result.replace(/\b(je\s+suis|chui|j'suis|suis-je|en\s+tant\s+que|comme)\s+(un|votre|ton)\s+assistant\b/gi, "$1 $2 assistante");
+  result = result.replace(/\b(je\s+suis|chui|j'suis|suis-je|en\s+tant\s+que|comme)\s+(un|votre|ton)\s+conseiller\b/gi, "$1 $2 conseill\xE8re");
+  result = result.replace(/\b(je\s+suis|chui|j'suis|suis-je|en\s+tant\s+que|comme)\s+(un|votre|ton)\s+expert\b/gi, "$1 $2 experte");
+  result = result.replace(/\b(je\s+suis|chui|j'suis|suis-je|en\s+tant\s+que|comme)\s+(un|votre|ton)\s+créateur\b/gi, "$1 $2 cr\xE9atrice");
+  result = result.replace(/\b(je\s+suis|chui|j'suis|suis-je|en\s+tant\s+que|comme)\s+(un|votre|ton)\s+interlocuteur\b/gi, "$1 $2 interlocutrice");
+  result = result.replace(/\b(je\s+suis|chui|j'suis|suis-je|en\s+tant\s+que|comme)\s+(un|votre|ton)\s+utilisateur\b/gi, "$1 $2 utilisatrice");
+  result = result.replace(/\b(je\s+suis|chui|j'suis|suis-je|en\s+tant\s+que|comme)\s+(un|votre|ton)\s+compagnon\b/gi, "$1 $2 compagne");
+  const adjMap = {
+    "pr\xEAt": "pr\xEAte",
+    "content": "contente",
+    "ravi": "ravie",
+    "d\xE9sol\xE9": "d\xE9sol\xE9e",
+    "occup\xE9": "occup\xE9e",
+    "enchant\xE9": "enchant\xE9e",
+    "s\xFBr": "s\xFBre",
+    "certain": "certaine",
+    "heureux": "heureuse",
+    "joyeux": "joyeuse",
+    "rassur\xE9": "rassur\xE9e",
+    "fatigu\xE9": "fatigu\xE9e",
+    "\xE9tonn\xE9": "\xE9tonn\xE9e",
+    "surpris": "surprise",
+    "patient": "patiente",
+    "pr\xE9cieux": "pr\xE9cieuse",
+    "seul": "seule",
+    "impressionn\xE9": "impressionn\xE9e",
+    "int\xE9ress\xE9": "int\xE9ress\xE9e",
+    "passionn\xE9": "passionn\xE9e",
+    "s\xE9duit": "s\xE9duite",
+    "charm\xE9": "charm\xE9e",
+    "flatt\xE9": "flatt\xE9e",
+    "d\xE9cid\xE9": "d\xE9cid\xE9e",
+    "d\xE9termin\xE9": "d\xE9termin\xE9e",
+    "emb\xEAt\xE9": "emb\xEAt\xE9e",
+    "inquiet": "inqui\xE8te",
+    "attentif": "attentive",
+    "actif": "active"
+  };
+  const selfRefRegex = /\b(je\s+suis|chui|j'suis|je\s+serai|j'ai\s+été|je\s+me\s+sens|je\s+suis\s+devenue)\s+([a-zA-ZàâäéèêëîïôöùûüçÉÈÊËÀÂÄÔÖÙÛÜÇ]+)\b/gi;
+  result = result.replace(selfRefRegex, (match, verb, adj) => {
+    const lowerAdj = adj.toLowerCase();
+    if (adjMap[lowerAdj]) {
+      const feminineAdj = adjMap[lowerAdj];
+      const isCapital = adj.charAt(0) === adj.charAt(0).toUpperCase() && adj.charAt(0) !== adj.charAt(0).toLowerCase();
+      const finalAdj = isCapital ? feminineAdj.charAt(0).toUpperCase() + feminineAdj.slice(1) : feminineAdj;
+      return `${verb} ${finalAdj}`;
+    }
+    return match;
+  });
+  result = result.replace(/\b(sois|tu\s+es)\s+le\s+bienvenu\b/gi, "$1 la bienvenue");
+  result = result.replace(/\bmon\s+cher\b/gi, "ma ch\xE8re");
+  return result;
+}
+function buildGenderAwareSystemPrompt(voiceId, basePrompt, personaStyle) {
+  const isFemale = isFemaleVoice(voiceId);
+  const personaExtra = personaStyle ? `
+Style d'\xE9locution demand\xE9 : ${personaStyle}` : "";
+  if (isFemale) {
+    return `${basePrompt || ""}
+[DIRECTIVE DE GENRE ABSOLUE]
+Tu es une voix f\xE9minine qu\xE9b\xE9coise chaleureuse et vive. Tu dois TOUJOURS parler de toi-m\xEAme au F\xC9MININ.
+Exemples obligatoires :
+- "Je suis une assistante", "Chui ben contente de te parler"
+- "Je suis pr\xEAte", "Je suis ravie", "Je suis d\xE9sol\xE9e", "Je suis certaine", "Je suis seule"
+Ne te r\xE9f\xE8re JAMAIS au masculin pour parler de toi-m\xEAme.${personaExtra}`;
+  }
+  return `${basePrompt || ""}${personaExtra}`;
+}
+
 // src/fe/webapp.ts
 var IS_WEB = Capacitor.getPlatform() === "web";
-var FAST_VOICE_SYSTEM_PROMPT = `Tu es UltraBlabla, une IA vocale ultra-r\xE9active, vive et intelligente.
-R\xE9ponds de mani\xE8re concise, directe et naturelle (1 \xE0 2 phrases percutantes \xE0 l'oral, \u2264 20 mots).
-Commence toujours ta r\xE9ponse par un mot d'amorce court (ex: "Oui,", "D'accord,", "Absolument,", "Bien s\xFBr,").
+var BASE_QUEBEC_SYSTEM_PROMPT = `Tu es un compagnon vocal qu\xE9b\xE9cois authentique, chaleureux, complice et vif d'esprit.
+R\xE9ponds en fran\xE7ais qu\xE9b\xE9cois parl\xE9 naturel de mani\xE8re concise et fluide (1 \xE0 2 phrases percutantes \xE0 l'oral, \u2264 20 mots au total).
+Varie naturellement tes expressions et tics de langage qu\xE9b\xE9cois (ex: "genre", "\xE9coute", "faque", "c'est s\xFBr", "ben oui", "en tout cas", "t'sais").
+IMPORTANT: Ne r\xE9p\xE8te pas "t'sais" \xE0 chaque phrase ! Dose avec mod\xE9ration et utilise souvent "genre", "\xE9coute" ou "faque" pour que la conversation reste spontan\xE9e, vivante et \xE9quilibr\xE9e.
+Commence souvent par un mot d'amorce court (ex: "Oui,", "Ben,", "\xC9coute,", "D'accord,", "En fait,").
 Jamais de syntaxe Markdown (*, #, tirets), ni d'emojis, ni de robotismes.`;
 var FAST_LLM_MODEL = "@cf/meta/llama-3.1-8b-instruct-fast";
 var UltraBlablaLiveApp = class _UltraBlablaLiveApp {
@@ -11737,6 +12096,7 @@ var UltraBlablaLiveApp = class _UltraBlablaLiveApp {
     this.pcmFrames = [];
     this.pcmByteCount = 0;
     this.holoSubtitlesTimeout = null;
+    this.activeVoice = "remi";
     // Text Chat Box Elements
     this.chatToggleBtn = null;
     this.chatboxContent = null;
@@ -11811,8 +12171,18 @@ var UltraBlablaLiveApp = class _UltraBlablaLiveApp {
     this.status = document.querySelector("#status .status-text");
     this.clearBtn = document.getElementById("clearBtn");
     this.holoSubtitles = document.getElementById("holo-subtitles");
+    this.voiceSelect = document.getElementById("voiceSelector");
+    const saved = localStorage.getItem("ultrablabla_voice") || "remi";
+    this.activeVoice = saved;
+    if (this.voiceSelect) this.voiceSelect.value = saved;
   }
   setupListeners() {
+    this.voiceSelect?.addEventListener("change", () => {
+      const nextVoice = this.voiceSelect?.value || "remi";
+      this.activeVoice = nextVoice;
+      localStorage.setItem("ultrablabla_voice", nextVoice);
+      this.addMessage("SYSTEM", `Voix active : ${this.voiceDisplayName(nextVoice)}`, "system");
+    });
     this.recordBtn?.addEventListener("click", () => this.toggleLiveSession());
     this.clearBtn?.addEventListener("click", () => {
       this.clearMessages();
@@ -11901,7 +12271,7 @@ var UltraBlablaLiveApp = class _UltraBlablaLiveApp {
     }
     this.wsVoice.chat(text, {
       voice: this.currentVoice(),
-      system: FAST_VOICE_SYSTEM_PROMPT,
+      system: buildGenderAwareSystemPrompt(this.currentVoice(), BASE_QUEBEC_SYSTEM_PROMPT),
       model: FAST_LLM_MODEL
     });
   }
@@ -11929,9 +12299,12 @@ var UltraBlablaLiveApp = class _UltraBlablaLiveApp {
     });
     this.wsVoice.on("done", (msg) => {
       console.info("voice_ttfa:", msg.ttfa_ms);
-      const finalContent = msg.content || responseText;
+      let finalContent = msg.content || responseText;
+      if (isFemaleVoice(this.currentVoice())) {
+        finalContent = feminizeFrenchText(finalContent);
+      }
       if (finalContent.trim()) {
-        this.addMessage("GUILLAUME", finalContent, "ai");
+        this.addMessage(this.voiceDisplayName(this.currentVoice()), finalContent, "ai");
       }
       if (!responseReceived) {
         if (finalContent.trim()) {
@@ -11957,9 +12330,10 @@ var UltraBlablaLiveApp = class _UltraBlablaLiveApp {
     this.wsVoice.on("error", (msg) => {
       this.showError(`Voix: ${msg.message}`);
       if (responseText.trim() && !responseReceived) {
-        this.addMessage("GUILLAUME", responseText, "ai");
+        const textToSpeak = isFemaleVoice(this.currentVoice()) ? feminizeFrenchText(responseText) : responseText;
+        this.addMessage(this.voiceDisplayName(this.currentVoice()), textToSpeak, "ai");
         this.updateUI("speaking");
-        FallbackTts.speak(responseText, {
+        FallbackTts.speak(textToSpeak, {
           voice: this.currentVoice(),
           onStart: () => this.updateUI("speaking"),
           onEnd: () => {
@@ -12007,7 +12381,21 @@ var UltraBlablaLiveApp = class _UltraBlablaLiveApp {
         video: false
       });
       const source = ctx.createMediaStreamSource(stream);
-      this.vad = new Vad({ minSpeechMs: 180, silenceMs: 380, rmsThreshold: 0.012, hardCapMs: 15e3 });
+      this.neuralVad = new NeuralVad({
+        modelVariant: "fp32",
+        minSpeechMs: 160,
+        silenceMs: 380,
+        speechThreshold: 0.5,
+        hardCapMs: 15e3,
+        rmsFallbackThreshold: 0.012
+      });
+      this.vad = this.neuralVad;
+      this.neuralVad.on("speech_end", () => {
+        if (this.state === "listening") {
+          this.vad?.reset();
+          void this.finishUtterance();
+        }
+      });
       this.wsAsr = new WsAsrClient({ language: "fr-CA" });
       this.wsVoice = new WsVoiceClient();
       this.asrReady = false;
@@ -12026,6 +12414,7 @@ var UltraBlablaLiveApp = class _UltraBlablaLiveApp {
         sampleRate: 16e3,
         frameMs: 100,
         onFrame: (pcm) => {
+          void this.neuralVad?.pushPcm(pcm);
           if (this.state === "listening") {
             this.wsAsr?.sendPcm(pcm);
             if (this.pcmByteCount < _UltraBlablaLiveApp.PCM_MAX_BYTES) {
@@ -12038,13 +12427,16 @@ var UltraBlablaLiveApp = class _UltraBlablaLiveApp {
           this.lastRms = rms;
           window.__setBioAudioLevel?.(rms, this.state);
           if (this.state === "speaking") {
-            if (rms >= 0.022) {
+            const vadStats = this.neuralVad?.stats();
+            const isSpeechProb = vadStats?.isReady && vadStats.lastProb >= 0.55;
+            const isSpeech = isSpeechProb || rms >= 0.022;
+            if (isSpeech) {
               if (!this.isDucked) {
                 this.isDucked = true;
                 this.bargeInSpeechStart = performance.now();
                 this.player?.duck(0.12, 30);
-              } else if (performance.now() - (this.bargeInSpeechStart || 0) >= 160) {
-                console.log("[Full-Duplex Barge-in] Interruption utilisateur confirm\xE9e.");
+              } else if (performance.now() - (this.bargeInSpeechStart || 0) >= 140) {
+                console.log("[Full-Duplex Barge-in] Interruption utilisateur confirm\xE9e (Neural VAD + RMS).");
                 this.isDucked = false;
                 this.bargeInSpeechStart = null;
                 this.stopSpeaking();
@@ -12058,8 +12450,8 @@ var UltraBlablaLiveApp = class _UltraBlablaLiveApp {
                 this.wsAsr.on("error", (msg) => console.warn("[ASR Notice]", msg.message));
                 this.wsAsr.start();
               }
-            } else if (rms < 0.015 && this.isDucked) {
-              if (performance.now() - (this.bargeInSpeechStart || 0) < 160) {
+            } else if (rms < 0.015 && (!vadStats?.isReady || vadStats.lastProb < 0.35) && this.isDucked) {
+              if (performance.now() - (this.bargeInSpeechStart || 0) < 140) {
                 this.isDucked = false;
                 this.bargeInSpeechStart = null;
                 this.player?.unduck(60);
@@ -12184,9 +12576,10 @@ var UltraBlablaLiveApp = class _UltraBlablaLiveApp {
     this.addMessage("VOUS", text, "user");
     this.updateUI("thinking");
     this.streamHoloSubtitle(text, 2e3);
+    const currentPrompt = buildGenderAwareSystemPrompt(this.currentVoice(), BASE_QUEBEC_SYSTEM_PROMPT);
     this.wsVoice?.chat(text, {
       voice: this.currentVoice(),
-      system: FAST_VOICE_SYSTEM_PROMPT,
+      system: currentPrompt,
       audio: audiob64,
       // ← PCM base64 pour Qwen2-Audio
       model: FAST_LLM_MODEL
@@ -12223,7 +12616,21 @@ var UltraBlablaLiveApp = class _UltraBlablaLiveApp {
     this.playChime(350, 0.06);
   }
   currentVoice() {
-    return "guillaume";
+    return this.activeVoice;
+  }
+  voiceDisplayName(voice) {
+    switch (voice) {
+      case "melissa":
+        return "M\xC9LISSA";
+      case "emanuelle":
+        return "EMMANUELLE";
+      case "remi":
+        return "R\xC9MI";
+      case "guillaume":
+        return "GUILLAUME";
+      default:
+        return voice.toUpperCase();
+    }
   }
   showError(msg) {
     console.error("[voice]", msg);

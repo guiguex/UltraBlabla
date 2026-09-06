@@ -74,17 +74,86 @@ export class AudioChunkPlayer {
     const numSamples = Math.floor(bytes.byteLength / (2 * channels));
     const buf = this.ctx.createBuffer(channels, numSamples, sampleRate);
     const dataView = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+
     for (let ch = 0; ch < channels; ch++) {
       const channelData = buf.getChannelData(ch);
       for (let i = 0; i < numSamples; i++) {
         const byteOffset = (i * channels + ch) * 2;
         if (byteOffset + 1 < bytes.byteLength) {
           const sample = dataView.getInt16(byteOffset, true);
-          channelData[i] = sample < 0 ? sample / 32768 : sample / 32767;
+          // Soft-clip léger pour éliminer toute saturation numérique
+          const s = sample < 0 ? sample / 32768 : sample / 32767;
+          channelData[i] = Math.max(-0.99, Math.min(0.99, s));
+        }
+      }
+
+      // Micro-ramp anti-clic sur les bords de chaque chunk streamé (16 à 32 échantillons)
+      if (channelData.length > 16) {
+        const rampLen = Math.min(32, Math.floor(channelData.length / 8));
+        for (let i = 0; i < rampLen; i++) {
+          const ramp = i / rampLen;
+          channelData[i] *= ramp;
+          channelData[channelData.length - 1 - i] *= ramp;
         }
       }
     }
     return buf;
+  }
+
+  /**
+   * Rogne les silences morts en préservant 25ms de pré-attaque (headroom acoustique)
+   * afin que les consonnes explosives (p, t, k, c, s, ch) ne soient jamais tronquées.
+   */
+  trimSilenceHeadroom(buffer: AudioBuffer): AudioBuffer {
+    const numChannels = buffer.numberOfChannels;
+    const sampleRate = buffer.sampleRate;
+    const length = buffer.length;
+    if (length === 0) return buffer;
+
+    const threshold = 0.006; // ~ -44 dB
+    let startIndex = 0;
+    let endIndex = length - 1;
+    const channelData = buffer.getChannelData(0);
+
+    // Détection de début de voix
+    for (let i = 0; i < length; i++) {
+      if (Math.abs(channelData[i]) > threshold) {
+        const preAttackHeadroom = Math.floor(sampleRate * 0.025); // 25ms de marge avant attaque
+        startIndex = Math.max(0, i - preAttackHeadroom);
+        break;
+      }
+    }
+
+    // Détection de fin de voix
+    for (let i = length - 1; i >= startIndex; i--) {
+      if (Math.abs(channelData[i]) > threshold) {
+        const postDecayHeadroom = Math.floor(sampleRate * 0.035); // 35ms de marge après décroissance
+        endIndex = Math.min(length - 1, i + postDecayHeadroom);
+        break;
+      }
+    }
+
+    const newLength = endIndex - startIndex + 1;
+    if (newLength <= 0 || (startIndex === 0 && endIndex === length - 1)) {
+      return buffer;
+    }
+
+    const trimmed = this.ctx.createBuffer(numChannels, newLength, sampleRate);
+    for (let ch = 0; ch < numChannels; ch++) {
+      const src = buffer.getChannelData(ch);
+      const dst = trimmed.getChannelData(ch);
+      dst.set(src.subarray(startIndex, endIndex + 1));
+
+      // Micro-fondu de 3ms pour éviter les pops
+      const fadeLen = Math.min(Math.floor(sampleRate * 0.003), newLength);
+      for (let f = 0; f < fadeLen; f++) {
+        const gain = f / fadeLen;
+        dst[f] *= gain;
+        dst[newLength - 1 - f] *= gain;
+      }
+    }
+
+    return trimmed;
   }
 
   duck(targetGain = 0.15, fadeMs = 35): void {

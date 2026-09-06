@@ -7,9 +7,12 @@ import { fileURLToPath } from 'node:url';
 import { GoogleGenAI } from '@google/genai';
 import { ser, pcm16leToFloat32, hintFor, EmotionCache, prewarmSer } from './ser/index.js';
 import { agiArena, AGI_TOPICS } from './agi/agi-arena.js';
+import { isFemaleVoice, feminizeFrenchText, buildGenderAwareSystemPrompt } from './fe/voice/feminizationService.js';
+import { formatQuebecProsody, extractNextSpeechChunk } from './fe/voice/speechChunker.js';
 
 const PUBLIC_DIR = path.resolve(process.cwd(), 'public');
 const MODELS_DIR = path.resolve(process.cwd(), 'models/ser-wav2vec2-fr');
+const VAD_MODELS_DIR = path.resolve(process.cwd(), 'silero-vad-onnx/onnx');
 const ONNX_WEB_DIR = path.resolve(process.cwd(), 'node_modules/onnxruntime-web/dist');
 
 // ─── Configuration des Backends ──────────────────────────────────
@@ -195,8 +198,13 @@ app.get('/healthz', (_req, res) => {
   res.json({ status: 'ok', uptime: process.uptime() });
 });
 
-// ─── SER Model + ORT-WASM Serving ─────────────────────────────────
+// ─── SER & VAD Models + ORT-WASM Serving ──────────────────────────
 app.use('/models/ser', express.static(MODELS_DIR, {
+  maxAge: '1y',
+  immutable: true
+}));
+
+app.use('/models/vad', express.static(VAD_MODELS_DIR, {
   maxAge: '1y',
   immutable: true
 }));
@@ -508,22 +516,25 @@ wssVoice.on('connection', (ws) => {
 
     const startMs = Date.now();
     const voice = data.voice || 'guillaume';
+    const isFemale = isFemaleVoice(voice);
     const userText = data.text;
     const requestedModel = data.model || LOCAL_LLM_MODEL;
     const userAudioB64: string | undefined = data.audio;
-    const BASE_SYSTEM = data.system || `Tu es UltraBlabla, une IA vocale ultra-réactive, chaleureuse et naturelle.
-Réponds de manière concise, directe et vivante (1 phrase courte à l'oral, ≤ 15 mots).
-Commence TOUJOURS ta réponse par un mot d'amorce court suivi d'une virgule (ex: "Oui,", "D'accord,", "En fait,", "Absolument,", "Bien sûr,", "Regarde,").
-Jamais de syntaxe Markdown (*, #, tirets), ni d'emojis, ni de robotismes.`;
+    const BASE_SYSTEM = data.system || `Tu es un compagnon vocal québécois authentique, chaleureux, complice et vif d'esprit.
+Réponds en français québécois parlé naturel de manière concise et fluide (1 à 2 phrases courtes à l'oral, ≤ 20 mots au total).
+Varie naturellement tes expressions québécoises (ex: "genre", "écoute", "faque", "c'est sûr", "ben oui", "en tout cas", "t'sais").
+IMPORTANT: Ne répète pas "t'sais" à chaque phrase ! Dose avec modération et alterne souvent avec "genre", "écoute" ou "faque" pour que l'élocution reste vivante et équilibrée.
+Commence souvent par un mot d'amorce court suivi d'une virgule (ex: "Oui,", "Ben,", "Écoute,", "D'accord,", "En fait,").
+N'utilise JAMAIS de syntaxe Markdown (*, #, tirets), ni d'emojis, ni de robotismes.`;
 
-    let systemPrompt = BASE_SYSTEM;
+    let systemPrompt = buildGenderAwareSystemPrompt(voice, BASE_SYSTEM);
     const clientHint: string | undefined = typeof data.emotion_hint === 'string' && data.emotion_hint.trim().length > 0
       ? data.emotion_hint.trim()
       : undefined;
 
     const cachedEmotion = emotionCache.get(clientId);
     if (cachedEmotion) {
-      systemPrompt = `${BASE_SYSTEM}\n[Contexte émotionnel : ${cachedEmotion}]`;
+      systemPrompt = `${systemPrompt}\n[Contexte émotionnel : ${cachedEmotion}]`;
     }
 
     if (clientHint) {
@@ -541,19 +552,22 @@ Jamais de syntaxe Markdown (*, #, tirets), ni d'emojis, ni de robotismes.`;
     let firstAudioSent = false;
     let ttfaMs = 0;
 
-    // Synthèse audio avec priorité Docker local puis Cloud
+    // Synthèse audio québécoise avec priorité Docker local puis Cloud PCM
     const synthesizeClause = async (clause: string) => {
       if (abortCtrl.signal.aborted) return;
-      const clean = clause.trim();
+      let clean = formatQuebecProsody(clause);
+      if (isFemale) {
+        clean = feminizeFrenchText(clean);
+      }
       if (!clean || clean.length < 2) return;
 
-      // 1) Essai Local C++
+      // 1) Essai Local C++ (timeout rapide 400ms pour ne jamais pénaliser le TTFA si absent)
       try {
         const localTts = await fetch(`${TTS_BACKEND_URL}/v1/audio/speech`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ input: clean, voice, response_format: 'pcm' }),
-          signal: AbortSignal.any([abortCtrl.signal, AbortSignal.timeout(2500)])
+          signal: AbortSignal.any([abortCtrl.signal, AbortSignal.timeout(400)])
         });
         if (localTts.ok) {
           const pcmBuf = await localTts.arrayBuffer();
@@ -569,11 +583,12 @@ Jamais de syntaxe Markdown (*, #, tirets), ni d'emojis, ni de robotismes.`;
         }
       } catch {}
 
-      // 2) Fallback Cloud TTS (api.guig.dev)
+      // 2) Fallback Cloud TTS SOTA (api.guig.dev)
       try {
         if (abortCtrl.signal.aborted) return;
         const headers: Record<string, string> = {
           'Origin': 'https://guig.dev',
+          'User-Agent': 'UltraBlabla-Voice-Matrix/5.0',
           'Content-Type': 'application/json',
         };
         if (process.env.AI_API_KEY || process.env.MCP_AUTH_TOKEN) {
@@ -582,17 +597,19 @@ Jamais de syntaxe Markdown (*, #, tirets), ni d'emojis, ni de robotismes.`;
         const cloudTts = await fetch(`${AI_API_URL}/v1/audio/speech`, {
           method: 'POST',
           headers,
-          body: JSON.stringify({ input: clean, voice, response_format: 'wav' }),
+          body: JSON.stringify({ input: clean, voice }),
           signal: AbortSignal.any([abortCtrl.signal, AbortSignal.timeout(3500)])
         });
         if (cloudTts.ok && !abortCtrl.signal.aborted) {
-          const mp3Buffer = await cloudTts.arrayBuffer();
-          const b64 = Buffer.from(mp3Buffer).toString('base64');
+          const pcmBuffer = await cloudTts.arrayBuffer();
+          const b64 = Buffer.from(pcmBuffer).toString('base64');
+          const contentType = cloudTts.headers.get('content-type') || '';
+          const format = (contentType.includes('pcm') || contentType.includes('l16')) ? 'pcm' : 'wav';
           if (!firstAudioSent) {
             firstAudioSent = true;
             ttfaMs = Date.now() - startMs;
           }
-          ws.send(JSON.stringify({ type: 'audio', data: b64, format: 'wav' }));
+          ws.send(JSON.stringify({ type: 'audio', data: b64, format }));
           return;
         }
       } catch {}
@@ -622,11 +639,18 @@ Jamais de syntaxe Markdown (*, #, tirets), ni d'emojis, ni de robotismes.`;
               sentenceBuf += delta;
               ws.send(JSON.stringify({ type: 'token', content: delta }));
 
-              const punctMatch = sentenceBuf.match(/([.!?;,:：，。！？]+)(\s+|$)/);
-              if (punctMatch && punctMatch.index !== undefined) {
-                const cutIdx = punctMatch.index + punctMatch[1].length;
-                const clause = sentenceBuf.slice(0, cutIdx).trim();
-                sentenceBuf = sentenceBuf.slice(cutIdx);
+              // 1. Détection de chunk complet avec masquage prosodique québécois
+              while (true) {
+                const speechChunk = extractNextSpeechChunk(sentenceBuf);
+                if (!speechChunk) break;
+                sentenceBuf = speechChunk.remaining;
+                if (speechChunk.chunk) await synthesizeClause(speechChunk.chunk);
+              }
+
+              // 2. Amorce rapide de premier souffle (TTFA < 500ms) si virgule ou mot d'amorce
+              if (!firstAudioSent && sentenceBuf.length >= 18 && /\s$/.test(sentenceBuf)) {
+                const clause = sentenceBuf.trim();
+                sentenceBuf = '';
                 if (clause) await synthesizeClause(clause);
               }
             }
@@ -699,12 +723,18 @@ Jamais de syntaxe Markdown (*, #, tirets), ni d'emojis, ni de robotismes.`;
                   sentenceBuf += delta;
                   ws.send(JSON.stringify({ type: 'token', content: delta }));
 
-                  const punctMatch = sentenceBuf.match(/([.!?;,:：，。！？]+)(\s+|$)/);
-                  const shouldCutEarly = !firstAudioSent && sentenceBuf.length >= 25 && /\s$/.test(sentenceBuf);
-                  if ((punctMatch && punctMatch.index !== undefined) || shouldCutEarly) {
-                    const cutIdx = punctMatch && punctMatch.index !== undefined ? punctMatch.index + punctMatch[1].length : sentenceBuf.length;
-                    const clause = sentenceBuf.slice(0, cutIdx).trim();
-                    sentenceBuf = sentenceBuf.slice(cutIdx);
+                  // 1. Détection de chunk complet avec masquage prosodique québécois
+                  while (true) {
+                    const speechChunk = extractNextSpeechChunk(sentenceBuf);
+                    if (!speechChunk) break;
+                    sentenceBuf = speechChunk.remaining;
+                    if (speechChunk.chunk) await synthesizeClause(speechChunk.chunk);
+                  }
+
+                  // 2. Amorce rapide de premier souffle (TTFA < 500ms)
+                  if (!firstAudioSent && sentenceBuf.length >= 18 && /\s$/.test(sentenceBuf)) {
+                    const clause = sentenceBuf.trim();
+                    sentenceBuf = '';
                     if (clause) await synthesizeClause(clause);
                   }
                 }

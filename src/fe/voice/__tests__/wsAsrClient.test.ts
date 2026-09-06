@@ -4,6 +4,10 @@ import { WsAsrClient } from '../wsAsrClient';
 // Mock the global WebSocket so we can simulate the worker side.
 class MockSocket {
   static instances: MockSocket[] = [];
+  static readonly CONNECTING = 0;
+  static readonly OPEN = 1;
+  static readonly CLOSING = 2;
+  static readonly CLOSED = 3;
   url: string;
   readyState = 0; // CONNECTING
   onopen: ((ev: any) => void) | null = null;

@@ -31,3 +31,4 @@ models/mmproj-qwen2-audio-7b.gguf
 .env
 .env
 /models
+/silero-vad-webgpu-do

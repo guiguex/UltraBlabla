@@ -569,31 +569,33 @@ Jamais de syntaxe Markdown (*, #, tirets), ni d'emojis, ni de robotismes.`;
         }
       } catch {}
 
-      // 2) Fallback Cloudflare
-      if (process.env.AI_API_KEY || process.env.MCP_AUTH_TOKEN) {
-        try {
-          if (abortCtrl.signal.aborted) return;
-          const cloudTts = await fetch(`${AI_API_URL}/v1/voice/speak`, {
-            method: 'POST',
-            headers: {
-              'Origin': 'https://guig.dev',
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${process.env.AI_API_KEY || process.env.MCP_AUTH_TOKEN}`
-            },
-            body: JSON.stringify({ input: clean, voice }),
-            signal: AbortSignal.any([abortCtrl.signal, AbortSignal.timeout(4000)])
-          });
-          if (cloudTts.ok && !abortCtrl.signal.aborted) {
-            const mp3Buffer = await cloudTts.arrayBuffer();
-            const b64 = Buffer.from(mp3Buffer).toString('base64');
-            if (!firstAudioSent) {
-              firstAudioSent = true;
-              ttfaMs = Date.now() - startMs;
-            }
-            ws.send(JSON.stringify({ type: 'audio', data: b64, format: 'wav' }));
+      // 2) Fallback Cloud TTS (api.guig.dev)
+      try {
+        if (abortCtrl.signal.aborted) return;
+        const headers: Record<string, string> = {
+          'Origin': 'https://guig.dev',
+          'Content-Type': 'application/json',
+        };
+        if (process.env.AI_API_KEY || process.env.MCP_AUTH_TOKEN) {
+          headers['Authorization'] = `Bearer ${process.env.AI_API_KEY || process.env.MCP_AUTH_TOKEN}`;
+        }
+        const cloudTts = await fetch(`${AI_API_URL}/v1/audio/speech`, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({ input: clean, voice, response_format: 'wav' }),
+          signal: AbortSignal.any([abortCtrl.signal, AbortSignal.timeout(3500)])
+        });
+        if (cloudTts.ok && !abortCtrl.signal.aborted) {
+          const mp3Buffer = await cloudTts.arrayBuffer();
+          const b64 = Buffer.from(mp3Buffer).toString('base64');
+          if (!firstAudioSent) {
+            firstAudioSent = true;
+            ttfaMs = Date.now() - startMs;
           }
-        } catch {}
-      }
+          ws.send(JSON.stringify({ type: 'audio', data: b64, format: 'wav' }));
+          return;
+        }
+      } catch {}
     };
 
     try {
@@ -698,8 +700,9 @@ Jamais de syntaxe Markdown (*, #, tirets), ni d'emojis, ni de robotismes.`;
                   ws.send(JSON.stringify({ type: 'token', content: delta }));
 
                   const punctMatch = sentenceBuf.match(/([.!?;,:：，。！？]+)(\s+|$)/);
-                  if (punctMatch && punctMatch.index !== undefined) {
-                    const cutIdx = punctMatch.index + punctMatch[1].length;
+                  const shouldCutEarly = !firstAudioSent && sentenceBuf.length >= 25 && /\s$/.test(sentenceBuf);
+                  if ((punctMatch && punctMatch.index !== undefined) || shouldCutEarly) {
+                    const cutIdx = punctMatch && punctMatch.index !== undefined ? punctMatch.index + punctMatch[1].length : sentenceBuf.length;
                     const clause = sentenceBuf.slice(0, cutIdx).trim();
                     sentenceBuf = sentenceBuf.slice(cutIdx);
                     if (clause) await synthesizeClause(clause);
@@ -809,26 +812,32 @@ wssAsr.on('connection', (ws) => {
       const wavHeader = createWavHeader(pcmData.length, 16000, 1);
       const fullWav = Buffer.concat([Buffer.from(wavHeader), pcmData]);
 
-      // 1) Essai Local C++ ASR
-      try {
-        const formData = new FormData();
-        const blob = new Blob([fullWav], { type: 'audio/wav' });
-        formData.append('file', blob, 'audio.wav');
-        formData.append('language', 'fr');
+      // 1) Essai Inférence vocale ASR (Local C++ / Cluster CUDA)
+      const asrTargets = [ASR_BACKEND_URL, AI_API_URL].filter(Boolean);
+      for (const target of asrTargets) {
+        try {
+          const formData = new FormData();
+          const blob = new Blob([fullWav], { type: 'audio/wav' });
+          formData.append('file', blob, 'audio.wav');
+          formData.append('language', 'fr');
 
-        const localAsr = await fetch(`${ASR_BACKEND_URL}/v1/audio/transcriptions`, {
-          method: 'POST',
-          body: formData,
-          signal: AbortSignal.timeout(3000)
-        });
+          const localAsr = await fetch(`${target}/v1/audio/transcriptions`, {
+            method: 'POST',
+            headers: { 'Origin': 'https://ultrablabla.guig.dev' },
+            body: formData,
+            signal: AbortSignal.timeout(4000)
+          });
 
-        if (localAsr.ok) {
-          const asrJson: any = await localAsr.json();
-          const text = asrJson.text || asrJson.transcription || '';
-          ws.send(JSON.stringify({ type: 'final', text }));
-          return;
-        }
-      } catch {}
+          if (localAsr.ok) {
+            const asrJson: any = await localAsr.json();
+            const text = asrJson.text || asrJson.transcription || '';
+            if (text) {
+              ws.send(JSON.stringify({ type: 'final', text }));
+              return;
+            }
+          }
+        } catch {}
+      }
 
       // 2) Essai Gemini Audio Transcription si GEMINI_API_KEY configuré
       const gemini = getGemini();
@@ -855,31 +864,34 @@ wssAsr.on('connection', (ws) => {
         }
       }
 
-      // 3) Fallback Cloud ASR (Whisper)
-      if (process.env.AI_API_KEY || process.env.MCP_AUTH_TOKEN) {
-        try {
-          const formData = new FormData();
-          const blob = new Blob([fullWav], { type: 'audio/wav' });
-          formData.append('file', blob, 'audio.wav');
-          formData.append('model', 'whisper-1');
-          formData.append('language', 'fr');
-          const cloudAsr = await fetch(`${AI_API_URL}/v1/audio/transcriptions`, {
-            method: 'POST',
-            headers: {
-              'Origin': 'https://guig.dev',
-              'Authorization': `Bearer ${process.env.AI_API_KEY || process.env.MCP_AUTH_TOKEN}`
-            },
-            body: formData,
-            signal: AbortSignal.timeout(5000)
-          });
-          if (cloudAsr.ok) {
-            const asrJson: any = await cloudAsr.json();
-            const text = asrJson.text || asrJson.transcription || '';
+      // 3) Fallback Cloud ASR (Whisper / Deepgram)
+      try {
+        const formData = new FormData();
+        const blob = new Blob([fullWav], { type: 'audio/wav' });
+        formData.append('file', blob, 'audio.wav');
+        formData.append('model', 'whisper-1');
+        formData.append('language', 'fr');
+        const headers: Record<string, string> = {
+          'Origin': 'https://guig.dev',
+        };
+        if (process.env.AI_API_KEY || process.env.MCP_AUTH_TOKEN) {
+          headers['Authorization'] = `Bearer ${process.env.AI_API_KEY || process.env.MCP_AUTH_TOKEN}`;
+        }
+        const cloudAsr = await fetch(`${AI_API_URL}/v1/audio/transcriptions`, {
+          method: 'POST',
+          headers,
+          body: formData,
+          signal: AbortSignal.timeout(5000)
+        });
+        if (cloudAsr.ok) {
+          const asrJson: any = await cloudAsr.json();
+          const text = asrJson.text || asrJson.transcription || '';
+          if (text) {
             ws.send(JSON.stringify({ type: 'final', text }));
             return;
           }
-        } catch {}
-      }
+        }
+      } catch {}
 
       ws.send(JSON.stringify({ type: 'final', text: '' }));
     }

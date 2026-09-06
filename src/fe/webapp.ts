@@ -366,7 +366,7 @@ class UltraBlablaLiveApp {
 
             this.wsAsr.on('ready',   () => { this.asrReady = true; });
             this.wsAsr.on('partial', (msg) => this.streamHoloSubtitle(msg.text, 2000));
-            this.wsAsr.on('error',   (msg) => this.showError(`ASR: ${msg.message}`));
+            this.wsAsr.on('error',   (msg) => console.warn('[ASR Notice]', msg.message));
 
             this.setupVoiceClientListeners();
 
@@ -411,7 +411,7 @@ class UltraBlablaLiveApp {
                                 this.wsAsr = new WsAsrClient({ language: 'fr-CA' });
                                 this.wsAsr.on('ready', () => { this.asrReady = true; });
                                 this.wsAsr.on('partial', (msg) => this.streamHoloSubtitle(msg.text, 2000));
-                                this.wsAsr.on('error', (msg) => this.showError(`ASR: ${msg.message}`));
+                                this.wsAsr.on('error', (msg) => console.warn('[ASR Notice]', msg.message));
                                 this.wsAsr.start();
                             }
                         } else if (rms < 0.015 && this.isDucked) {
@@ -442,9 +442,81 @@ class UltraBlablaLiveApp {
         }
     }
 
+    private async transcribePcmWithLocalAsr(frames: Int16Array[]): Promise<string> {
+        if (!frames || frames.length === 0) return '';
+        const totalSamples = frames.reduce((acc, f) => acc + f.length, 0);
+        if (totalSamples < 2400) return ''; // Moins de 150ms
+
+        const pcm = new Int16Array(totalSamples);
+        let offset = 0;
+        for (const f of frames) {
+            pcm.set(f, offset);
+            offset += f.length;
+        }
+
+        const sampleRate = 16000;
+        const dataSize = pcm.byteLength;
+        const buffer = new ArrayBuffer(44 + dataSize);
+        const view = new DataView(buffer);
+        view.setUint32(0, 0x52494646, false); // "RIFF"
+        view.setUint32(4, 36 + dataSize, true);
+        view.setUint32(8, 0x57415645, false); // "WAVE"
+        view.setUint32(12, 0x666d7420, false); // "fmt "
+        view.setUint32(16, 16, true);
+        view.setUint16(20, 1, true); // PCM
+        view.setUint16(22, 1, true); // Mono
+        view.setUint32(24, sampleRate, true);
+        view.setUint32(28, sampleRate * 2, true);
+        view.setUint16(32, 2, true);
+        view.setUint16(34, 16, true);
+        view.setUint32(36, 0x64617461, false); // "data"
+        view.setUint32(40, dataSize, true);
+        new Uint8Array(buffer, 44).set(new Uint8Array(pcm.buffer, pcm.byteOffset, pcm.byteLength));
+
+        const form = new FormData();
+        const blob = new Blob([buffer], { type: 'audio/wav' });
+        form.append('file', blob, 'audio.wav');
+        form.append('language', 'fr');
+
+        const endpoints = [
+            (typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')) ? '/v1/audio/transcriptions' : null,
+            'https://ultrablabla.guig.dev/v1/audio/transcriptions',
+            'https://api.guig.dev/v1/audio/transcriptions',
+        ].filter(Boolean) as string[];
+
+        for (const ep of endpoints) {
+            try {
+                const res = await fetch(ep, {
+                    method: 'POST',
+                    headers: { 'Origin': window.location.origin },
+                    body: form,
+                    signal: AbortSignal.timeout(4000)
+                });
+                if (res.ok) {
+                    const data = await res.json();
+                    const transcribed = (data.text || data.transcription || '').trim();
+                    if (transcribed) return transcribed;
+                }
+            } catch (e) {
+                console.warn('[Local C++ ASR endpoint attempt]', ep, e);
+            }
+        }
+        return '';
+    }
+
     private async finishUtterance() {
+        const capturedFrames = [...this.pcmFrames];
         let text = '';
-        if (this.wsAsr) {
+
+        // 1) Inférence vocale ASR prioritaire : Local C++ via passerelle CUDA
+        try {
+            text = await this.transcribePcmWithLocalAsr(capturedFrames);
+        } catch (e) {
+            console.warn('[Local C++ ASR error, checking fallback]', e);
+        }
+
+        // 2) Si l'inférence locale n'a rien donné, repli sur le flux ws / natif
+        if (!text && this.wsAsr) {
             try {
                 text = await this.wsAsr.stop();
             } catch (err) {
@@ -457,7 +529,7 @@ class UltraBlablaLiveApp {
         if (!text || text.trim().length === 0) {
             this.pcmFrames = []; this.pcmByteCount = 0;
             this.updateUI('idle');
-            this.scheduleAutoRestart(150);
+            this.scheduleAutoRestart(250);
             return;
         }
 

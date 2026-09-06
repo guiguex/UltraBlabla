@@ -17,9 +17,9 @@ interface Env {
 }
 
 const LLM_BACKEND_URL = (env_or("LLM_BACKEND_URL", "https://api.guig.dev")).replace(/\/+$/, "");
-const ASR_BACKEND_URL = (env_or("ASR_BACKEND_URL", "")).replace(/\/+$/, "");
-const TTS_BACKEND_URL = (env_or("TTS_BACKEND_URL", "")).replace(/\/+$/, "");
-const TTS_SIDECAR_URL = (env_or("TTS_SIDECAR_URL", "")).replace(/\/+$/, "");
+const ASR_BACKEND_URL = (env_or("ASR_BACKEND_URL", "https://api.guig.dev")).replace(/\/+$/, "");
+const TTS_BACKEND_URL = (env_or("TTS_BACKEND_URL", "https://api.guig.dev")).replace(/\/+$/, "");
+const TTS_SIDECAR_URL = (env_or("TTS_SIDECAR_URL", "https://api.guig.dev")).replace(/\/+$/, "");
 const RAW_CORS_ORIGIN = (env_or("CORS_ORIGIN", "*")).trim();
 
 function env_or(k: string, d: string): string {
@@ -144,6 +144,15 @@ export default {
     // CORS preflight
     if (request.method === "OPTIONS") {
       return new Response(null, { status: 204, headers: corsHeaders(origin) });
+    }
+
+    // ─── WebSocket Upgrade Handling ───
+    if (request.headers.get("upgrade")?.toLowerCase() === "websocket") {
+      const targetUrl = new URL(request.url);
+      targetUrl.protocol = "https:";
+      targetUrl.host = "api.guig.dev";
+      targetUrl.port = "";
+      return fetch(targetUrl.toString(), request);
     }
 
     // ─── Local routes ───

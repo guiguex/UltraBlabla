@@ -12,6 +12,9 @@ compatibility_flags = ["nodejs_compat"]
 
 [vars]
 LLM_BACKEND_URL = "https://api.guig.dev"
+ASR_BACKEND_URL = "https://api.guig.dev"
+TTS_BACKEND_URL = "https://api.guig.dev"
+TTS_SIDECAR_URL = "https://api.guig.dev"
 CORS_ORIGIN = "*"
 
 [observability]

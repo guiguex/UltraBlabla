@@ -11107,8 +11107,12 @@ function toB64(pcm) {
 }
 function getDefaultAsrWsUrl() {
   if (typeof window === "undefined") return "ws://localhost:3000/v1/asr/stream";
-  const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
-  return `${proto}//${window.location.host}/v1/asr/stream`;
+  const isLocal = window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1";
+  if (isLocal) {
+    const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
+    return `${proto}//${window.location.host}/v1/asr/stream`;
+  }
+  return "wss://api.guig.dev/v1/asr/stream";
 }
 var WsAsrClient = class {
   constructor(opts = {}) {
@@ -11123,6 +11127,9 @@ var WsAsrClient = class {
     };
     this.pendingStop = null;
     this.pendingPcm = [];
+    this.lastRecognizedText = "";
+    this.nativeRec = null;
+    this.hasReceivedServerReady = false;
     this.url = opts.url ?? getDefaultAsrWsUrl();
     this.language = opts.language ?? "fr-CA";
     this.sampleRate = opts.sampleRate ?? 16e3;
@@ -11140,17 +11147,69 @@ var WsAsrClient = class {
   emit(event, ...args) {
     this.listeners[event]?.forEach((fn2) => fn2(...args));
   }
+  startNativeFallback() {
+    if (this.nativeRec) return;
+    const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRec) return;
+    try {
+      const rec = new SpeechRec();
+      rec.lang = this.language.startsWith("fr") ? "fr-CA" : this.language;
+      rec.interimResults = true;
+      rec.continuous = true;
+      rec.onresult = (event) => {
+        let interim = "";
+        let final = "";
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+          const item = event.results[i];
+          if (item.isFinal) final += item[0].transcript;
+          else interim += item[0].transcript;
+        }
+        const text = (final || interim).trim();
+        if (text) {
+          this.lastRecognizedText = text;
+          this.emit("partial", { seq: ++this.seq, text, latency_ms: 30, model: "speech-recognition-fallback" });
+        }
+      };
+      rec.onerror = (err) => {
+        if (err.error !== "no-speech" && err.error !== "aborted") {
+          console.warn("[Fallback ASR error]", err.error);
+        }
+      };
+      rec.start();
+      this.nativeRec = rec;
+      if (!this.hasReceivedServerReady) {
+        this.emit("ready", { model: "speech-recognition-native", fallback: "local-browser" });
+      }
+    } catch {
+    }
+  }
   start() {
     this.seq = 0;
     this.pendingPcm = [];
-    this.ws = new WebSocket(this.url);
+    this.lastRecognizedText = "";
+    this.hasReceivedServerReady = false;
+    try {
+      this.ws = new WebSocket(this.url);
+    } catch (e) {
+      console.warn("[ASR WS start exception, activating fallback]", e?.message);
+      this.startNativeFallback();
+      return;
+    }
     this.ws.onopen = () => {
+      if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
       const msg = { type: "start", language: this.language, sample_rate: this.sampleRate };
-      this.ws.send(JSON.stringify(msg));
+      try {
+        this.ws.send(JSON.stringify(msg));
+      } catch {
+      }
       if (this.pendingPcm.length > 0) {
         for (const pcm of this.pendingPcm) {
+          if (this.ws.readyState !== WebSocket.OPEN) break;
           const frameMsg = { type: "pcm", seq: this.seq++, data: toB64(pcm) };
-          this.ws.send(JSON.stringify(frameMsg));
+          try {
+            this.ws.send(JSON.stringify(frameMsg));
+          } catch {
+          }
         }
         this.pendingPcm = [];
       }
@@ -11164,15 +11223,18 @@ var WsAsrClient = class {
       }
       switch (parsed.type) {
         case "ready":
+          this.hasReceivedServerReady = true;
           this.emit("ready", { model: parsed.model, fallback: parsed.fallback });
           break;
         case "partial":
+          if (parsed.text) this.lastRecognizedText = parsed.text;
           this.emit("partial", { seq: parsed.seq, text: parsed.text, latency_ms: parsed.latency_ms, model: parsed.model });
           break;
         case "final":
+          if (parsed.text) this.lastRecognizedText = parsed.text;
           this.emit("final", { seq: parsed.seq, text: parsed.text, model: parsed.model });
           if (this.pendingStop) {
-            this.pendingStop.resolve(parsed.text);
+            this.pendingStop.resolve(parsed.text || this.lastRecognizedText);
             this.pendingStop = null;
           }
           break;
@@ -11183,39 +11245,93 @@ var WsAsrClient = class {
     };
     this.ws.onclose = (ev) => {
       this.emit("closed", { code: ev.code, reason: ev.reason ?? "" });
+      if (!this.hasReceivedServerReady) {
+        this.startNativeFallback();
+      }
       if (this.pendingStop) {
-        this.pendingStop.resolve("");
+        this.pendingStop.resolve(this.lastRecognizedText);
         this.pendingStop = null;
       }
     };
-    this.ws.onerror = () => this.emit("error", { message: "ws error" });
+    this.ws.onerror = () => {
+      if (!this.hasReceivedServerReady) {
+        this.startNativeFallback();
+      }
+      this.emit("error", { message: "ws error" });
+    };
   }
   sendPcm(pcm) {
-    if (!this.ws || this.ws.readyState === 0) {
-      this.pendingPcm.push(pcm);
+    if (!this.ws || this.ws.readyState === WebSocket.CONNECTING) {
+      if (this.pendingPcm.length < 50) {
+        this.pendingPcm.push(pcm);
+      }
       return;
     }
-    if (this.ws.readyState !== 1) return;
-    const msg = { type: "pcm", seq: this.seq++, data: toB64(pcm) };
-    this.ws.send(JSON.stringify(msg));
+    if (this.ws.readyState !== WebSocket.OPEN) return;
+    try {
+      const msg = { type: "pcm", seq: this.seq++, data: toB64(pcm) };
+      this.ws.send(JSON.stringify(msg));
+    } catch {
+    }
   }
   stop() {
-    if (!this.ws) return Promise.resolve("");
+    if (this.nativeRec) {
+      try {
+        this.nativeRec.stop();
+      } catch {
+      }
+      this.nativeRec = null;
+    }
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+      const text = this.lastRecognizedText;
+      if (this.pendingStop) {
+        this.pendingStop.resolve(text);
+        this.pendingStop = null;
+      }
+      return Promise.resolve(text);
+    }
     return new Promise((resolve) => {
       const pending = { resolve };
       this.pendingStop = pending;
-      this.ws.send(JSON.stringify({ type: "stop" }));
+      try {
+        this.ws.send(JSON.stringify({ type: "stop" }));
+      } catch {
+        if (this.pendingStop === pending) {
+          this.pendingStop = null;
+        }
+        resolve(this.lastRecognizedText);
+        return;
+      }
       setTimeout(() => {
         if (this.pendingStop === pending) {
-          this.pendingStop.resolve("");
+          this.pendingStop.resolve(this.lastRecognizedText);
           this.pendingStop = null;
         }
       }, this.stopTimeoutMs);
     });
   }
   close() {
-    this.ws?.close();
-    this.ws = null;
+    if (this.nativeRec) {
+      try {
+        this.nativeRec.abort();
+      } catch {
+      }
+      this.nativeRec = null;
+    }
+    if (this.ws) {
+      if (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING) {
+        try {
+          this.ws.close();
+        } catch {
+        }
+      }
+      this.ws = null;
+    }
+    this.pendingPcm = [];
+    if (this.pendingStop) {
+      this.pendingStop.resolve(this.lastRecognizedText);
+      this.pendingStop = null;
+    }
   }
 };
 
@@ -11629,7 +11745,11 @@ var UltraBlablaLiveApp = class _UltraBlablaLiveApp {
     this.chatStatus = null;
     this.turnstileToken = null;
     if (typeof window !== "undefined") {
-      document.addEventListener("DOMContentLoaded", () => this.init());
+      if (document.readyState === "loading") {
+        document.addEventListener("DOMContentLoaded", () => this.init());
+      } else {
+        this.init();
+      }
     }
   }
   static {
@@ -11701,34 +11821,25 @@ var UltraBlablaLiveApp = class _UltraBlablaLiveApp {
       if (this.state !== "idle") this.stopListening();
     });
     document.addEventListener("keydown", (e) => {
-      if (e.code === "Space" && (e.target === document.body || e.target === this.recordBtn)) {
+      const activeEl = document.activeElement;
+      const isTyping = activeEl && (activeEl.tagName === "INPUT" || activeEl.tagName === "TEXTAREA");
+      if (isTyping) return;
+      if (e.code === "Space") {
         e.preventDefault();
         this.toggleLiveSession();
+      } else if (e.code === "Escape") {
+        e.preventDefault();
+        if (this.state === "speaking") {
+          this.stopSpeaking();
+        } else if (this.state === "listening") {
+          this.stopListening();
+        }
       }
     });
   }
   setupChatbox() {
-    this.chatToggleBtn = document.getElementById("chatToggleBtn");
-    this.chatboxContent = document.getElementById("chatboxContent");
     this.neuralInput = document.getElementById("neuralInput");
     this.neuralSendBtn = document.getElementById("neuralSendBtn");
-    this.chatStatus = document.getElementById("chatStatus");
-    if (this.chatStatus) {
-      this.chatStatus.textContent = "ONLINE \u2022 CLOUD AI";
-      this.chatStatus.style.color = "#10b981";
-    }
-    this.chatToggleBtn?.addEventListener("click", () => {
-      if (this.chatboxContent) {
-        const isCurrentlyHidden = this.chatboxContent.style.display === "none" || !this.chatboxContent.classList.contains("active");
-        if (isCurrentlyHidden) {
-          this.chatboxContent.style.display = "block";
-          this.chatboxContent.classList.add("active");
-        } else {
-          this.chatboxContent.style.display = "none";
-          this.chatboxContent.classList.remove("active");
-        }
-      }
-    });
     this.neuralInput?.addEventListener("input", () => {
       const hasText = !!this.neuralInput?.value.trim();
       if (this.neuralSendBtn) this.neuralSendBtn.disabled = !hasText;
@@ -11905,7 +12016,7 @@ var UltraBlablaLiveApp = class _UltraBlablaLiveApp {
         this.asrReady = true;
       });
       this.wsAsr.on("partial", (msg) => this.streamHoloSubtitle(msg.text, 2e3));
-      this.wsAsr.on("error", (msg) => this.showError(`ASR: ${msg.message}`));
+      this.wsAsr.on("error", (msg) => console.warn("[ASR Notice]", msg.message));
       this.setupVoiceClientListeners();
       this.wsAsr.start();
       this.updateUI("listening");
@@ -11925,6 +12036,7 @@ var UltraBlablaLiveApp = class _UltraBlablaLiveApp {
         },
         onRms: (rms) => {
           this.lastRms = rms;
+          window.__setBioAudioLevel?.(rms, this.state);
           if (this.state === "speaking") {
             if (rms >= 0.022) {
               if (!this.isDucked) {
@@ -11943,7 +12055,7 @@ var UltraBlablaLiveApp = class _UltraBlablaLiveApp {
                   this.asrReady = true;
                 });
                 this.wsAsr.on("partial", (msg) => this.streamHoloSubtitle(msg.text, 2e3));
-                this.wsAsr.on("error", (msg) => this.showError(`ASR: ${msg.message}`));
+                this.wsAsr.on("error", (msg) => console.warn("[ASR Notice]", msg.message));
                 this.wsAsr.start();
               }
             } else if (rms < 0.015 && this.isDucked) {
@@ -11970,9 +12082,71 @@ var UltraBlablaLiveApp = class _UltraBlablaLiveApp {
       this.updateUI("idle");
     }
   }
+  async transcribePcmWithLocalAsr(frames) {
+    if (!frames || frames.length === 0) return "";
+    const totalSamples = frames.reduce((acc, f) => acc + f.length, 0);
+    if (totalSamples < 2400) return "";
+    const pcm = new Int16Array(totalSamples);
+    let offset = 0;
+    for (const f of frames) {
+      pcm.set(f, offset);
+      offset += f.length;
+    }
+    const sampleRate = 16e3;
+    const dataSize = pcm.byteLength;
+    const buffer = new ArrayBuffer(44 + dataSize);
+    const view = new DataView(buffer);
+    view.setUint32(0, 1380533830, false);
+    view.setUint32(4, 36 + dataSize, true);
+    view.setUint32(8, 1463899717, false);
+    view.setUint32(12, 1718449184, false);
+    view.setUint32(16, 16, true);
+    view.setUint16(20, 1, true);
+    view.setUint16(22, 1, true);
+    view.setUint32(24, sampleRate, true);
+    view.setUint32(28, sampleRate * 2, true);
+    view.setUint16(32, 2, true);
+    view.setUint16(34, 16, true);
+    view.setUint32(36, 1684108385, false);
+    view.setUint32(40, dataSize, true);
+    new Uint8Array(buffer, 44).set(new Uint8Array(pcm.buffer, pcm.byteOffset, pcm.byteLength));
+    const form = new FormData();
+    const blob = new Blob([buffer], { type: "audio/wav" });
+    form.append("file", blob, "audio.wav");
+    form.append("language", "fr");
+    const endpoints = [
+      typeof window !== "undefined" && (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1") ? "/v1/audio/transcriptions" : null,
+      "https://ultrablabla.guig.dev/v1/audio/transcriptions",
+      "https://api.guig.dev/v1/audio/transcriptions"
+    ].filter(Boolean);
+    for (const ep2 of endpoints) {
+      try {
+        const res = await fetch(ep2, {
+          method: "POST",
+          headers: { "Origin": window.location.origin },
+          body: form,
+          signal: AbortSignal.timeout(4e3)
+        });
+        if (res.ok) {
+          const data = await res.json();
+          const transcribed = (data.text || data.transcription || "").trim();
+          if (transcribed) return transcribed;
+        }
+      } catch (e) {
+        console.warn("[Local C++ ASR endpoint attempt]", ep2, e);
+      }
+    }
+    return "";
+  }
   async finishUtterance() {
+    const capturedFrames = [...this.pcmFrames];
     let text = "";
-    if (this.wsAsr) {
+    try {
+      text = await this.transcribePcmWithLocalAsr(capturedFrames);
+    } catch (e) {
+      console.warn("[Local C++ ASR error, checking fallback]", e);
+    }
+    if (!text && this.wsAsr) {
       try {
         text = await this.wsAsr.stop();
       } catch (err) {
@@ -11988,7 +12162,7 @@ var UltraBlablaLiveApp = class _UltraBlablaLiveApp {
       this.pcmFrames = [];
       this.pcmByteCount = 0;
       this.updateUI("idle");
-      this.scheduleAutoRestart(150);
+      this.scheduleAutoRestart(250);
       return;
     }
     let audiob64;
@@ -12086,7 +12260,7 @@ var UltraBlablaLiveApp = class _UltraBlablaLiveApp {
   }
   clearMessages() {
     if (!this.messages) return;
-    this.messages.innerHTML = `<div class="welcome-matrix"><div class="holo-card neural-welcome holo-border neural-scan"><div class="card-glow"></div><div class="quantum-field"></div><div class="quantum-interference"></div><div class="neural-header"><h2 class="matrix-title holo-text">NEURAL VOICE INTERFACE</h2><div class="quantum-line"></div></div><p class="holo-subtitle">Advanced Cloud AI \u2022 Quantum Processing</p><div class="tech-specs"><div class="spec-item vosk"><div class="spec-icon"><div class="icon-core"></div><div class="icon-rings"></div></div><div class="spec-details"><span class="spec-name">CLOUDFLARE AI EDGE</span><span class="spec-desc">Global Latency Audio Processing</span></div><div class="spec-status active"></div></div><div class="spec-item qwen"><div class="spec-icon"><div class="icon-core"></div><div class="icon-rings"></div></div><div class="spec-details"><span class="spec-name">Kimi K2.7 / Qwen Neural</span><span class="spec-desc">Quantum Language Matrix</span></div><div class="spec-status active"></div></div><div class="spec-item tts"><div class="spec-icon"><div class="icon-core"></div><div class="icon-rings"></div></div><div class="spec-details"><span class="spec-name">QWEN CLONED TTS + GOOGLE FALLBACK</span><span class="spec-desc">Guillaume Voice Synthesis</span></div><div class="spec-status active"></div></div></div><div class="quantum-prompt"><div class="prompt-glow"></div><span>CLIQUEZ SUR LE BOUTON POUR COMMENCER</span></div></div></div>`;
+    this.messages.innerHTML = `<div class="welcome-matrix"><div class="holo-card neural-welcome holo-border"><div class="card-glow"></div><div class="welcome-icon-wrap"><span class="welcome-icon">\u{1F399}\uFE0F</span></div><h2 class="welcome-title">Bienvenue sur UltraBlabla</h2><p class="welcome-desc">Votre compagnon vocal ultra-r\xE9actif. Parlez librement au microphone ou tapez votre message ci-dessous pour d\xE9marrer une conversation fluide et instantan\xE9e.</p><div class="welcome-tip"><span>\u{1F4A1} Cliquez sur l'orbe central ou appuyez sur <kbd>Espace</kbd> pour commencer \xE0 parler.</span></div></div></div>`;
   }
   streamHoloSubtitle(text, durationEstimateMs = 3e3) {
     if (!this.holoSubtitles) return;
@@ -12107,33 +12281,34 @@ var UltraBlablaLiveApp = class _UltraBlablaLiveApp {
   }
   updateUI(newState) {
     this.state = newState;
+    window.__setBioAudioLevel?.(this.lastRms, newState);
     const btnLabel = this.recordBtn?.querySelector(".btn-label");
     const btnSublabel = this.recordBtn?.querySelector(".btn-sublabel");
     switch (newState) {
       case "idle":
-        if (this.status) this.status.textContent = "PR\xCAT \u2022 100% CLOUD AI";
-        if (btnLabel) btnLabel.textContent = "CLOUD VOICE";
-        if (btnSublabel) btnSublabel.textContent = "Tap to Activate";
+        if (this.status) this.status.textContent = "PR\xCAT \u2022 DIALOGUE VOCAL OUVERT";
+        if (btnLabel) btnLabel.textContent = "PARLER";
+        if (btnSublabel) btnSublabel.textContent = "Touchez ou [Espace]";
         this.recordBtn?.classList.remove("voice-active", "processing", "speaking");
         break;
       case "listening":
         if (this.status) this.status.textContent = "\u{1F442} \xC0 l'\xE9coute... (parlez naturellement)";
-        if (btnLabel) btnLabel.textContent = "LISTENING";
-        if (btnSublabel) btnSublabel.textContent = "Tap to Stop & Send";
+        if (btnLabel) btnLabel.textContent = "\xC9COUTE EN COURS";
+        if (btnSublabel) btnSublabel.textContent = "Touchez pour envoyer";
         this.recordBtn?.classList.add("voice-active");
         this.recordBtn?.classList.remove("processing", "speaking");
         break;
       case "thinking":
-        if (this.status) this.status.textContent = "\u{1F9E0} Traitement IA...";
-        if (btnLabel) btnLabel.textContent = "THINKING";
-        if (btnSublabel) btnSublabel.textContent = "Processing...";
+        if (this.status) this.status.textContent = "\u{1F9E0} R\xE9flexion en cours...";
+        if (btnLabel) btnLabel.textContent = "R\xC9FLEXION";
+        if (btnSublabel) btnSublabel.textContent = "Traitement IA...";
         this.recordBtn?.classList.add("processing");
         this.recordBtn?.classList.remove("voice-active", "speaking");
         break;
       case "speaking":
-        if (this.status) this.status.textContent = "\u{1F399}\uFE0F Guillaume parle... (touchez pour interrompre)";
-        if (btnLabel) btnLabel.textContent = "SPEAKING";
-        if (btnSublabel) btnSublabel.textContent = "Tap to Stop";
+        if (this.status) this.status.textContent = "\u{1F399}\uFE0F UltraBlabla parle... (touchez pour couper)";
+        if (btnLabel) btnLabel.textContent = "\xC9LOCUTION";
+        if (btnSublabel) btnSublabel.textContent = "Touchez pour stopper";
         this.recordBtn?.classList.add("speaking");
         this.recordBtn?.classList.remove("voice-active", "processing");
         break;

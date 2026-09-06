@@ -119,12 +119,14 @@ export class NeuralVad {
         if (isBrowser) {
           this.ort = await import('onnxruntime-web');
           this.ort.env.wasm.wasmPaths = '/onnxruntime-web/';
-          this.ort.env.wasm.simd = true;
-          this.ort.env.wasm.numThreads = Math.min(2, navigator.hardwareConcurrency ?? 2);
+          // Anti-regression: proxy=false + simd=false + numThreads=1 pour eviter
+          // "previous call to 'initWasm()' failed" sur navigateurs / CPU qui
+          // ne supportent pas SIMD/pthread. Plus lent mais fiable.
+          this.ort.env.wasm.proxy = false;
+          this.ort.env.wasm.simd = false;
+          this.ort.env.wasm.numThreads = 1;
 
-          const providers: any[] = [];
-          if ('gpu' in navigator) providers.push('webgpu', 'wasm');
-          else providers.push('wasm');
+          const providers: any[] = ['wasm'];
 
           try {
             this.session = await this.ort.InferenceSession.create(this.opts.modelUrl, {

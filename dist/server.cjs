@@ -656,7 +656,7 @@ var TTS_SIDECAR_URL = (process.env.TTS_SIDECAR_URL || "http://localhost:5000").r
 var LLM_BACKEND_URL = (process.env.LLM_BACKEND_URL || process.env.CLASSIFIER_BACKEND_URL || "http://api.guig.dev/v1").replace(/\/+$/, "");
 var LOCAL_LLM_MODEL = process.env.LOCAL_LLM_MODEL || process.env.CLASSIFIER_MODEL || "@cf/meta/llama-3.1-8b-instruct-fast";
 var AUDIO_LLM_URL = (process.env.AUDIO_LLM_URL || `http://localhost:${PORT}`).replace(/\/+$/, "");
-var AUDIO_LLM_MODEL = process.env.AUDIO_LLM_MODEL || "qwen2-audio-7b";
+var AUDIO_LLM_MODEL = process.env.AUDIO_LLM_MODEL || "";
 var AI_API_URL = (process.env.AI_API_URL || "https://api.guig.dev").replace(/\/+$/, "");
 var geminiClient = null;
 function getGemini() {

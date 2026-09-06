@@ -4,6 +4,7 @@
  */
 import { Capacitor } from '@capacitor/core';
 import { WsAsrClient, WsVoiceClient, AudioChunkPlayer, Vad, NeuralVad, startPcmCapture, FallbackTts, isFemaleVoice, feminizeFrenchText, buildGenderAwareSystemPrompt } from './voice/index';
+import { WsNeuralVad } from './voice/ws-neural-vad';
 import type { VoiceId } from './voice/types';
 
 const IS_WEB = Capacitor.getPlatform() === 'web';
@@ -408,15 +409,32 @@ class UltraBlablaLiveApp {
             });
             const source = ctx.createMediaStreamSource(stream);
 
-            this.neuralVad = new NeuralVad({
-                modelVariant: 'fp32',
-                minSpeechMs: 160,
-                silenceMs: 380,
-                speechThreshold: 0.50,
-                hardCapMs: 15000,
-                rmsFallbackThreshold: 0.012,
-            });
-            this.vad = this.neuralVad;
+            // VAD via WebSocket Worker DO (WebGPU ONNX server-side).
+            // Plus d'ONNX dans le browser -> plus de problemes MIME/crossOrigin/CSP.
+            // Fallback automatique sur NeuralVad local si WS_URL absent ou KO.
+            const vadWsUrl = (window as any).__VAD_WS_URL__ || 'wss://silero-vad-webgpu-do.g-meingan.workers.dev/ws';
+            try {
+                this.neuralVad = new WsNeuralVad({
+                    wsUrl: vadWsUrl,
+                    minSpeechMs: 160,
+                    silenceMs: 380,
+                    speechThreshold: 0.50,
+                    hardCapMs: 15000,
+                    rmsFallbackThreshold: 0.012,
+                }) as any;
+                this.vad = this.neuralVad as any;
+            } catch {
+                // Fallback local (mieux que rien)
+                this.neuralVad = new NeuralVad({
+                    modelVariant: 'fp32',
+                    minSpeechMs: 160,
+                    silenceMs: 380,
+                    speechThreshold: 0.50,
+                    hardCapMs: 15000,
+                    rmsFallbackThreshold: 0.012,
+                });
+                this.vad = this.neuralVad;
+            }
 
             this.neuralVad.on('speech_end', () => {
                 if (this.state === 'listening') {

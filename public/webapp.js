@@ -10910,11 +10910,10 @@ var NeuralVad = class {
         if (isBrowser) {
           this.ort = await Promise.resolve().then(() => (init_ort_bundle_min(), ort_bundle_min_exports));
           this.ort.env.wasm.wasmPaths = "/onnxruntime-web/";
-          this.ort.env.wasm.simd = true;
-          this.ort.env.wasm.numThreads = Math.min(2, navigator.hardwareConcurrency ?? 2);
-          const providers = [];
-          if ("gpu" in navigator) providers.push("webgpu", "wasm");
-          else providers.push("wasm");
+          this.ort.env.wasm.proxy = false;
+          this.ort.env.wasm.simd = false;
+          this.ort.env.wasm.numThreads = 1;
+          const providers = ["wasm"];
           try {
             this.session = await this.ort.InferenceSession.create(this.opts.modelUrl, {
               executionProviders: providers,
@@ -12071,6 +12070,215 @@ Ne te r\xE9f\xE8re JAMAIS au masculin pour parler de toi-m\xEAme.${personaExtra}
   return `${basePrompt || ""}${personaExtra}`;
 }
 
+// src/fe/voice/ws-neural-vad.ts
+var CHUNK_SIZE2 = 512;
+var SPEECH_THRESHOLD = 0.5;
+var SILENCE_THRESHOLD = 0.35;
+var MIN_SPEECH_MS = 160;
+var SILENCE_MS = 380;
+var HARD_CAP_MS = 15e3;
+var WsNeuralVad = class {
+  constructor(opts) {
+    this.ws = null;
+    this.connected = false;
+    // State
+    this.sampleBuffer = [];
+    this.listeners = {};
+    this.lastProb = 0;
+    this.lastRms = 0;
+    this.speechStartedAt = null;
+    this.lastSpeechAt = null;
+    this.current = "idle";
+    this.startedAt = 0;
+    this.rmsFallback = false;
+    this.opts = {
+      speechThreshold: opts.speechThreshold ?? SPEECH_THRESHOLD,
+      silenceThreshold: opts.silenceThreshold ?? SILENCE_THRESHOLD,
+      minSpeechMs: opts.minSpeechMs ?? MIN_SPEECH_MS,
+      silenceMs: opts.silenceMs ?? SILENCE_MS,
+      hardCapMs: opts.hardCapMs ?? HARD_CAP_MS,
+      rmsFallbackThreshold: opts.rmsFallbackThreshold ?? 0.012,
+      wsUrl: opts.wsUrl
+    };
+    this.startedAt = Date.now();
+    this.connect();
+  }
+  connect() {
+    try {
+      this.ws = new WebSocket(this.opts.wsUrl);
+      this.ws.binaryType = "arraybuffer";
+      this.ws.onopen = () => {
+        this.connected = true;
+        this.emit("ready");
+      };
+      this.ws.onmessage = (ev) => {
+        try {
+          const msg = JSON.parse(ev.data);
+          if (msg.type === "vad" && typeof msg.probability === "number") {
+            this.lastProb = msg.probability;
+            this.emit("speech_prob", msg.probability, msg.backend);
+            this.handleProb(msg.probability);
+          }
+        } catch {
+        }
+      };
+      this.ws.onerror = () => {
+        this.rmsFallback = true;
+        this.emit("error", new Error("WebSocket VAD unavailable, using RMS fallback"));
+      };
+      this.ws.onclose = () => {
+        this.connected = false;
+      };
+    } catch (err) {
+      this.rmsFallback = true;
+    }
+  }
+  on(event, fn2) {
+    if (!this.listeners[event]) this.listeners[event] = /* @__PURE__ */ new Set();
+    this.listeners[event].add(fn2);
+    return () => this.listeners[event]?.delete(fn2);
+  }
+  emit(event, ...args) {
+    const set = this.listeners[event];
+    if (set) for (const fn2 of set) {
+      try {
+        fn2(...args);
+      } catch (e) {
+        console.warn("[WsNeuralVad listener]", e);
+      }
+    }
+  }
+  /**
+   * Push RMS energy value (from worklet's kind:'rms' events, ~10 Hz).
+   * Used by startListening line 523: this.vad?.push(this.lastRms, performance.now()).
+   * With WS connected: returns state based on elapsed time since last speech
+   * (local timeout safety net — protects against missed DO silence frames).
+   * Without WS: drive state machine from RMS threshold.
+   */
+  push(rms, _timestampMs) {
+    if (this.connected && !this.rmsFallback) {
+      const now = _timestampMs ?? Date.now();
+      if (this.current === "speaking" && this.speechStartedAt && now - (this.lastSpeechAt ?? now) > this.opts.silenceMs) {
+        if (now - this.speechStartedAt > this.opts.minSpeechMs) {
+          this.current = "idle";
+          this.emit("speech_end");
+          return "silence";
+        }
+      }
+      return this.current === "speaking" ? "speech" : "idle";
+    }
+    return this.pushRms(rms, _timestampMs);
+  }
+  /** Push RMS only (no PCM). Used by .push() when WS unavailable. */
+  pushRms(rms, _timestampMs) {
+    this.lastRms = rms;
+    const now = _timestampMs ?? Date.now();
+    if (rms < this.opts.rmsFallbackThreshold) {
+      if (this.current === "speaking") {
+        this.lastSpeechAt = now;
+        if (this.lastSpeechAt - (this.speechStartedAt ?? this.lastSpeechAt) > this.opts.silenceMs) {
+          this.current = "idle";
+          this.emit("silence_end");
+          this.emit("speech_end");
+          return "silence";
+        }
+      }
+      return "idle";
+    } else {
+      if (this.current === "idle") {
+        this.speechStartedAt = now;
+        this.current = "speaking";
+        this.emit("speech_start");
+      }
+      this.lastSpeechAt = now;
+      return "speech";
+    }
+  }
+  /**
+   * Push PCM audio (from worklet's kind:'frame' events).
+   * Accumulates 512-sample chunks and sends to WebSocket if connected.
+   */
+  pushPcm(pcm, _timestampMs) {
+    const samples = pcm instanceof Int16Array ? Array.from(pcm, (v) => v / 32768) : Array.from(pcm);
+    let sumSq = 0;
+    for (const s of samples) sumSq += s * s;
+    this.lastRms = Math.sqrt(sumSq / samples.length);
+    if (this.rmsFallback || !this.connected) {
+      if (this.lastRms < this.opts.rmsFallbackThreshold) {
+        if (this.current === "speaking") {
+          this.lastSpeechAt = Date.now();
+          if (this.lastSpeechAt - (this.speechStartedAt ?? this.lastSpeechAt) > this.opts.silenceMs) {
+            this.current = "idle";
+            this.emit("silence_end");
+            this.emit("speech_end");
+            return "silence";
+          }
+        }
+        return "idle";
+      } else {
+        if (this.current === "idle") {
+          this.speechStartedAt = Date.now();
+          this.current = "speaking";
+          this.emit("speech_start");
+        }
+        this.lastSpeechAt = Date.now();
+        return "speech";
+      }
+    }
+    this.sampleBuffer.push(...samples);
+    while (this.sampleBuffer.length >= CHUNK_SIZE2) {
+      const chunk = new Float32Array(this.sampleBuffer.slice(0, CHUNK_SIZE2));
+      this.sampleBuffer = this.sampleBuffer.slice(CHUNK_SIZE2);
+      if (this.connected && this.ws?.readyState === WebSocket.OPEN) {
+        this.ws.send(chunk.buffer);
+      }
+    }
+    return this.current === "speaking" ? "speech" : "idle";
+  }
+  handleProb(prob) {
+    const now = Date.now();
+    if (now - this.startedAt > this.opts.hardCapMs) {
+      this.reset();
+      this.emit("hardcap");
+    }
+    if (prob > this.opts.speechThreshold) {
+      if (this.current === "idle") {
+        this.speechStartedAt = now;
+        this.current = "speaking";
+        this.emit("speech_start");
+      }
+      this.lastSpeechAt = now;
+    } else if (prob < this.opts.silenceThreshold) {
+      if (this.current === "speaking" && this.speechStartedAt && now - this.speechStartedAt > this.opts.minSpeechMs) {
+        this.current = "idle";
+        this.emit("speech_end");
+      }
+    }
+  }
+  reset() {
+    this.speechStartedAt = null;
+    this.lastSpeechAt = null;
+    this.current = "idle";
+    this.sampleBuffer = [];
+    this.startedAt = Date.now();
+    this.emit("reset");
+  }
+  /** Stats for UI debug display. */
+  stats() {
+    return {
+      isReady: this.connected && !this.rmsFallback,
+      backend: this.connected ? "ws-webgpu" : "rms-fallback",
+      lastProb: this.lastProb,
+      lastRms: this.lastRms
+    };
+  }
+  close() {
+    this.ws?.close();
+    this.ws = null;
+    this.connected = false;
+  }
+};
+
 // src/fe/webapp.ts
 var IS_WEB = Capacitor.getPlatform() === "web";
 if (typeof document !== "undefined" && !("modelContext" in document)) {
@@ -12396,15 +12604,28 @@ var UltraBlablaLiveApp = class _UltraBlablaLiveApp {
         video: false
       });
       const source = ctx.createMediaStreamSource(stream);
-      this.neuralVad = new NeuralVad({
-        modelVariant: "fp32",
-        minSpeechMs: 160,
-        silenceMs: 380,
-        speechThreshold: 0.5,
-        hardCapMs: 15e3,
-        rmsFallbackThreshold: 0.012
-      });
-      this.vad = this.neuralVad;
+      const vadWsUrl = window.__VAD_WS_URL__ || "wss://silero-vad-webgpu-do.g-meingan.workers.dev/ws";
+      try {
+        this.neuralVad = new WsNeuralVad({
+          wsUrl: vadWsUrl,
+          minSpeechMs: 160,
+          silenceMs: 380,
+          speechThreshold: 0.5,
+          hardCapMs: 15e3,
+          rmsFallbackThreshold: 0.012
+        });
+        this.vad = this.neuralVad;
+      } catch {
+        this.neuralVad = new NeuralVad({
+          modelVariant: "fp32",
+          minSpeechMs: 160,
+          silenceMs: 380,
+          speechThreshold: 0.5,
+          hardCapMs: 15e3,
+          rmsFallbackThreshold: 0.012
+        });
+        this.vad = this.neuralVad;
+      }
       this.neuralVad.on("speech_end", () => {
         if (this.state === "listening") {
           this.vad?.reset();

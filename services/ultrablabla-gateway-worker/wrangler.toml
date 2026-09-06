@@ -1,0 +1,26 @@
+name = "ultrablabla-gateway"
+main = "src/index.ts"
+compatibility_date = "2026-08-29"
+compatibility_flags = ["nodejs_compat"]
+
+# Defaults alignes sur le Worker distant v4. Override via :
+#   wrangler secret put LLM_BACKEND_URL
+#   wrangler secret put ASR_BACKEND_URL
+#   wrangler secret put TTS_BACKEND_URL
+#   wrangler secret put TTS_SIDECAR_URL
+#   wrangler secret put CORS_ORIGIN
+
+[vars]
+LLM_BACKEND_URL = "https://api.guig.dev"
+ASR_BACKEND_URL = "https://asr.guig.dev"
+TTS_BACKEND_URL = "https://tts.guig.dev"
+TTS_SIDECAR_URL = "https://api.guig.dev"
+CORS_ORIGIN = "*"
+
+# Binding AI natif Cloudflare Workers AI (utilise par /v1/chat/completions).
+# Syntaxe compatible wrangler 4.x : bloc [ai] (et pas [[ai_bindings]]).
+[ai]
+binding = "AI"
+
+[observability]
+enabled = true

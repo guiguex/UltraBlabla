@@ -1,5 +1,5 @@
 // UltraBlabla Service Worker - Next-Gen 2028 (Stale-While-Revalidate)
-const VERSION = 'ultrablabla-v8-dmr-cuda-live';
+const VERSION = 'ultrablabla-v9-iso-coop-coep';
 const CACHE_NAME = `static-cache-${VERSION}`;
 const DYNAMIC_CACHE_NAME = `dynamic-cache-${VERSION}`;
 

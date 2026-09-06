@@ -8,6 +8,19 @@ import type { VoiceId } from './voice/types';
 
 const IS_WEB = Capacitor.getPlatform() === 'web';
 
+// Shim `document.modelContext` à undefined pour neutraliser l'avertissement
+// `[webmcp-interceptor] document.modelContext is not available` injecté par
+// Chrome M146+ lorsque `chrome://flags/#enable-experimental-web-platform-features`
+// est activé. Tant que l'API n'est pas standardisée, on évite le bruit console
+// sans toucher au script externe.
+if (typeof document !== 'undefined' && !('modelContext' in document)) {
+  try {
+    Object.defineProperty(document, 'modelContext', { value: undefined, configurable: true });
+  } catch {
+    /* certaines versions de Chrome exposent déjà la propriété en lecture seule — on ignore */
+  }
+}
+
 type LiveState = 'idle' | 'listening' | 'thinking' | 'speaking';
 
 const BASE_QUEBEC_SYSTEM_PROMPT = `Tu es un compagnon vocal québécois authentique, chaleureux, complice et vif d'esprit.
@@ -35,6 +48,10 @@ class UltraBlablaLiveApp {
     private audioEndUnsub?: () => void;
     private isAutoConversation = true;
     private autoRestartTimer: ReturnType<typeof setTimeout> | null = null;
+    // Hysteresis : compte les échecs consécutifs d'auto-restart pour casser la boucle
+    // quand l'ASR échoue (timeout api.guig.dev, VAD en fallback RMS trop sensible, etc.).
+    private restartFailCount = 0;
+    private restartFailWindowStart = 0;
     private isDucked = false;
     private bargeInSpeechStart: number | null = null;
     // Accumulation PCM pour Qwen2-Audio (limité à 512 KB soit ~16s @ 16kHz mono 16-bit)
@@ -207,11 +224,22 @@ class UltraBlablaLiveApp {
             this.autoRestartTimer = null;
         }
         if (!this.isAutoConversation) return;
+
+        // Hysteresis : si on a eu 4 échecs consécutifs dans une fenêtre de 8 s,
+        // on espace les tentatives à 2 s pour éviter la cascade CPU/réseau.
+        const now = performance.now();
+        if (now - this.restartFailWindowStart > 8000) {
+            this.restartFailWindowStart = now;
+            this.restartFailCount = 0;
+        }
+        const adjustedDelay = this.restartFailCount >= 4 ? 2000 : delayMs;
+
         this.autoRestartTimer = setTimeout(() => {
             if (this.state === 'idle' && this.isAutoConversation) {
+                this.restartFailCount++;
                 void this.startListening();
             }
-        }, delayMs);
+        }, adjustedDelay);
     }
 
     private async getOrCreateAudioContext(): Promise<AudioContext> {
@@ -535,7 +563,7 @@ class UltraBlablaLiveApp {
                     method: 'POST',
                     headers: { 'Origin': window.location.origin },
                     body: form,
-                    signal: AbortSignal.timeout(4000)
+                    signal: AbortSignal.timeout(8000)
                 });
                 if (res.ok) {
                     const data = await res.json();
@@ -553,23 +581,25 @@ class UltraBlablaLiveApp {
         const capturedFrames = [...this.pcmFrames];
         let text = '';
 
-        // 1) Inférence vocale ASR prioritaire : Local C++ via passerelle CUDA
-        try {
-            text = await this.transcribePcmWithLocalAsr(capturedFrames);
-        } catch (e) {
-            console.warn('[Local C++ ASR error, checking fallback]', e);
-        }
-
-        // 2) Si l'inférence locale n'a rien donné, repli sur le flux ws / natif
-        if (!text && this.wsAsr) {
+        // 1) WebSocket ASR prioritaire (latence <500 ms, déjà câblé en streaming)
+        if (this.wsAsr) {
             try {
                 text = await this.wsAsr.stop();
             } catch (err) {
-                console.error('[ASR stop error]', err);
+                console.warn('[ASR stop error]', err);
             }
         }
         try { this.wsAsr?.close(); } catch {}
         this.wsAsr = undefined;
+
+        // 2) Si le WS n'a rien donné, repli sur l'inférence HTTP (Local C++ / Cloud)
+        if (!text) {
+            try {
+                text = await this.transcribePcmWithLocalAsr(capturedFrames);
+            } catch (e) {
+                console.warn('[Local C++ ASR error]', e);
+            }
+        }
 
         if (!text || text.trim().length === 0) {
             this.pcmFrames = []; this.pcmByteCount = 0;
@@ -577,6 +607,9 @@ class UltraBlablaLiveApp {
             this.scheduleAutoRestart(250);
             return;
         }
+
+        // Une vraie transcription est passée : on libère l'hysteresis d'auto-restart.
+        this.restartFailCount = 0;
 
         // Fusionner les frames PCM en un seul buffer base64 pour Qwen2-Audio
         let audiob64: string | undefined;

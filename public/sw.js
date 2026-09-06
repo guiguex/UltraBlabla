@@ -52,6 +52,13 @@ self.addEventListener('fetch', (e) => {
     return;
   }
 
+  // Bypass ONNX WASM/JS — ne JAMAIS servir index.html en fallback SPA.
+  // Sinon le navigateur reçoit l'ortho-wasm-simd-threaded.jsep.mjs en text/html
+  // et le module-loader jette « Expected a JavaScript-or-Wasm module script ».
+  if (url.pathname.startsWith('/onnxruntime-web/')) {
+    return;
+  }
+
   // Bypass external domains (like Cloudflare Insights, Analytics, etc.)
   if (url.origin !== location.origin) {
     return;

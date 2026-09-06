@@ -263,9 +263,7 @@ var init_dist = __esm({
           return;
         }
         const index = listeners.indexOf(listenerFunc);
-        if (index !== -1) {
-          this.listeners[eventName].splice(index, 1);
-        }
+        this.listeners[eventName].splice(index, 1);
         if (!this.listeners[eventName].length) {
           this.removeWindowListener(this.windowListeners[eventName]);
         }
@@ -12075,6 +12073,12 @@ Ne te r\xE9f\xE8re JAMAIS au masculin pour parler de toi-m\xEAme.${personaExtra}
 
 // src/fe/webapp.ts
 var IS_WEB = Capacitor.getPlatform() === "web";
+if (typeof document !== "undefined" && !("modelContext" in document)) {
+  try {
+    Object.defineProperty(document, "modelContext", { value: void 0, configurable: true });
+  } catch {
+  }
+}
 var BASE_QUEBEC_SYSTEM_PROMPT = `Tu es un compagnon vocal qu\xE9b\xE9cois authentique, chaleureux, complice et vif d'esprit.
 R\xE9ponds en fran\xE7ais qu\xE9b\xE9cois parl\xE9 naturel de mani\xE8re concise et fluide (1 \xE0 2 phrases percutantes \xE0 l'oral, \u2264 20 mots au total).
 Varie naturellement tes expressions et tics de langage qu\xE9b\xE9cois (ex: "genre", "\xE9coute", "faque", "c'est s\xFBr", "ben oui", "en tout cas", "t'sais").
@@ -12090,6 +12094,10 @@ var UltraBlablaLiveApp = class _UltraBlablaLiveApp {
     this.asrReady = false;
     this.isAutoConversation = true;
     this.autoRestartTimer = null;
+    // Hysteresis : compte les échecs consécutifs d'auto-restart pour casser la boucle
+    // quand l'ASR échoue (timeout api.guig.dev, VAD en fallback RMS trop sensible, etc.).
+    this.restartFailCount = 0;
+    this.restartFailWindowStart = 0;
     this.isDucked = false;
     this.bargeInSpeechStart = null;
     // Accumulation PCM pour Qwen2-Audio (limité à 512 KB soit ~16s @ 16kHz mono 16-bit)
@@ -12230,11 +12238,18 @@ var UltraBlablaLiveApp = class _UltraBlablaLiveApp {
       this.autoRestartTimer = null;
     }
     if (!this.isAutoConversation) return;
+    const now = performance.now();
+    if (now - this.restartFailWindowStart > 8e3) {
+      this.restartFailWindowStart = now;
+      this.restartFailCount = 0;
+    }
+    const adjustedDelay = this.restartFailCount >= 4 ? 2e3 : delayMs;
     this.autoRestartTimer = setTimeout(() => {
       if (this.state === "idle" && this.isAutoConversation) {
+        this.restartFailCount++;
         void this.startListening();
       }
-    }, delayMs);
+    }, adjustedDelay);
   }
   async getOrCreateAudioContext() {
     if (!this.audioCtx || this.audioCtx.state === "closed") {
@@ -12517,7 +12532,7 @@ var UltraBlablaLiveApp = class _UltraBlablaLiveApp {
           method: "POST",
           headers: { "Origin": window.location.origin },
           body: form,
-          signal: AbortSignal.timeout(4e3)
+          signal: AbortSignal.timeout(8e3)
         });
         if (res.ok) {
           const data = await res.json();
@@ -12533,16 +12548,11 @@ var UltraBlablaLiveApp = class _UltraBlablaLiveApp {
   async finishUtterance() {
     const capturedFrames = [...this.pcmFrames];
     let text = "";
-    try {
-      text = await this.transcribePcmWithLocalAsr(capturedFrames);
-    } catch (e) {
-      console.warn("[Local C++ ASR error, checking fallback]", e);
-    }
-    if (!text && this.wsAsr) {
+    if (this.wsAsr) {
       try {
         text = await this.wsAsr.stop();
       } catch (err) {
-        console.error("[ASR stop error]", err);
+        console.warn("[ASR stop error]", err);
       }
     }
     try {
@@ -12550,6 +12560,13 @@ var UltraBlablaLiveApp = class _UltraBlablaLiveApp {
     } catch {
     }
     this.wsAsr = void 0;
+    if (!text) {
+      try {
+        text = await this.transcribePcmWithLocalAsr(capturedFrames);
+      } catch (e) {
+        console.warn("[Local C++ ASR error]", e);
+      }
+    }
     if (!text || text.trim().length === 0) {
       this.pcmFrames = [];
       this.pcmByteCount = 0;
@@ -12557,6 +12574,7 @@ var UltraBlablaLiveApp = class _UltraBlablaLiveApp {
       this.scheduleAutoRestart(250);
       return;
     }
+    this.restartFailCount = 0;
     let audiob64;
     if (this.pcmFrames.length > 0) {
       const totalLen = this.pcmFrames.reduce((acc, f) => acc + f.length, 0);

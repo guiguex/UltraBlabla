@@ -1,4 +1,4 @@
-import express, { type Request as ExpRequest, type Response as ExpResponse } from 'express';
+import express, { type Request as ExpRequest, type Response as ExpResponse, type NextFunction } from 'express';
 import http from 'node:http';
 import { WebSocketServer, WebSocket } from 'ws';
 import path from 'node:path';
@@ -80,7 +80,7 @@ async function proxyWithFallback(req: ExpRequest, res: ExpResponse, localBackend
         headers,
         body: ['GET', 'HEAD'].includes(req.method) ? undefined : rawBody,
         redirect: 'manual',
-        signal: AbortSignal.timeout(3000)
+        signal: AbortSignal.timeout(8000)
       });
       if (localRes.ok) {
         res.status(localRes.status);
@@ -165,6 +165,22 @@ const app = express();
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
+// ─── Cross-Origin Isolation (COOP/COEP/CORP) ──────────────────────
+// Active `self.crossOriginIsolated === true` côté navigateur pour permettre
+// SharedArrayBuffer, WASM threading et ONNX Runtime multi-thread performant.
+// À déployer AVANT toute route / static middleware pour que tous les subresources
+// (modèles, fonts, scripts) soient servis avec ces en-têtes.
+const COOP = 'same-origin';
+const COEP = 'require-corp';
+const CORP = 'same-origin';
+const setIsolationHeaders = (_req: ExpRequest, res: ExpResponse, next: NextFunction) => {
+  res.setHeader('Cross-Origin-Opener-Policy', COOP);
+  res.setHeader('Cross-Origin-Embedder-Policy', COEP);
+  res.setHeader('Cross-Origin-Resource-Policy', CORP);
+  next();
+};
+app.use(setIsolationHeaders);
+
 // ─── Statut & Configuration ───────────────────────────────────────
 app.get('/api/config', (_req, res) => {
   res.json({
@@ -211,7 +227,14 @@ app.use('/models/vad', express.static(VAD_MODELS_DIR, {
 
 app.use('/onnxruntime-web', express.static(ONNX_WEB_DIR, {
   maxAge: '1y',
-  immutable: true
+  immutable: true,
+  setHeaders: (res, filePath) => {
+    if (filePath.endsWith('.mjs')) {
+      res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
+    } else if (filePath.endsWith('.wasm')) {
+      res.setHeader('Content-Type', 'application/wasm');
+    }
+  }
 }));
 
 // ─── Routing Voix & TTS ───────────────────────────────────────────
@@ -339,7 +362,7 @@ app.post('/chat/completions', async (req, res) => {
           messages,
           max_tokens: 80
         }),
-        signal: AbortSignal.timeout(6000)
+        signal: AbortSignal.timeout(12000)
       });
       if (cloudRes.ok) {
         const json = await cloudRes.json();

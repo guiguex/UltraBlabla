@@ -29,6 +29,6 @@ test_generated.wav
 models/qwen2-audio-7b-instruct-q4_k_m.gguf
 models/mmproj-qwen2-audio-7b.gguf
 .env
-.env
 /models
-/silero-vad-webgpu-do
+/services/ultrablabla-gateway-worker/node_modules
+/silero-vad-r2

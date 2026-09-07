@@ -30,7 +30,7 @@ class SerBrowser {
     if (this.session) return;
     if (!this.ort) {
       this.ort = await import("onnxruntime-web");
-      this.ort.env.wasm.wasmPaths = "/onnxruntime-web/";
+      this.ort.env.wasm.wasmPaths = "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.29.0/dist/";
       this.ort.env.wasm.simd = true;
       this.ort.env.wasm.numThreads = Math.min(4, navigator.hardwareConcurrency ?? 2);
     }

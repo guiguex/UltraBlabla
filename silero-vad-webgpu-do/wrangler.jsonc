@@ -1,0 +1,41 @@
+{
+	"$schema": "./node_modules/wrangler/config-schema.json",
+	"name": "silero-vad-webgpu-do",
+	"main": "dist/worker.mjs",
+	"compatibility_date": "2026-09-07",
+	"no_bundle": true,
+	"rules": [
+		{
+			"type": "CompiledWasm",
+			"globs": [
+				"dist/*.wasm"
+			],
+			"fallthrough": true
+		}
+	],
+	"r2_buckets": [
+		{
+			"binding": "VAD_ASSETS",
+			"bucket_name": "vad-assets"
+		}
+	],
+	"durable_objects": {
+		"bindings": [
+			{
+				"name": "VAD_SESSION",
+				"class_name": "VadSession"
+			}
+		]
+	},
+	"migrations": [
+		{
+			"tag": "v1",
+			"new_sqlite_classes": [
+				"VadSession"
+			]
+		}
+	],
+	"vars": {
+		"R2_WASM_PREFIX": ""
+	}
+}

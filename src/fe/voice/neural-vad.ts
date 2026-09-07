@@ -118,11 +118,12 @@ export class NeuralVad {
         const isBrowser = typeof window !== 'undefined';
         if (isBrowser) {
           this.ort = await import('onnxruntime-web');
-          
-          // Use CDN if on Cloudflare Pages static hosting or local wasm missing
-          const isPages = window.location.hostname.endsWith('.pages.dev');
+
+          // Fetch WASM from R2 public bucket (single source for all clients).
+          // Fallback CDN jsDelivr if R2 unreachable.
+          const workerWasmPath = 'https://vad.guig.dev/';
           const cdnWasmPath = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.29.0/dist/';
-          this.ort.env.wasm.wasmPaths = isPages ? cdnWasmPath : '/onnxruntime-web/';
+          this.ort.env.wasm.wasmPaths = workerWasmPath;
           this.ort.env.wasm.proxy = false;
           // Note: do not set simd = false; modern onnxruntime-web requires SIMD wasm binary (ort-wasm-simd-threaded.wasm)
           this.ort.env.wasm.numThreads = (typeof crossOriginIsolated !== 'undefined' && crossOriginIsolated) ? 2 : 1;
@@ -136,7 +137,7 @@ export class NeuralVad {
             });
             this.backend = 'wasm';
           } catch (initErr: any) {
-            // If local wasm failed, retry once with CDN before falling back to RMS
+            // If primary source failed, retry once with CDN before falling back to RMS
             if (this.ort.env.wasm.wasmPaths !== cdnWasmPath) {
               console.warn(`[NeuralVad] Local wasm load failed (${initErr?.message}), retrying with CDN...`);
               this.ort.env.wasm.wasmPaths = cdnWasmPath;

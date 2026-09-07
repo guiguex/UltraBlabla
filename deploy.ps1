@@ -1,11 +1,4 @@
-# UltraBlabla -- Deploy to Cloudflare (ultrablabla.pages.dev + ultrablabla-gateway)
-# Usage :
-#    .\deploy.ps1                       (frontend + gateway)
-#    .\deploy.ps1 -Target frontend
-#    .\deploy.ps1 -Target gateway
-#    .\deploy.ps1 -NoBuild
-#    .\deploy.ps1 -DryRun
-
+# Deploy to Cloudflare
 param(
     [ValidateSet('all','frontend','gateway','silero')]
     [string]$Target = 'all',
@@ -41,11 +34,12 @@ function Run-Step($title, [scriptblock]$cmd) {
     }
 }
 
-# 0) Build
+# 0) Build frontend
 if (-not $NoBuild -and $Target -in @('all','frontend')) {
-    Run-Step 'bun install'             { bun install --frozen-lockfile }
-    Run-Step 'bun run build:fe'       { bun run build:fe }
-    Run-Step 'bun run build:server'   { bun run build:server }
+    Run-Step 'bun install (root)'  { bun install }
+    Run-Step 'bun run build:fe'    { bun run build:fe }
+    # build:server is NOT needed for frontend-only deploy
+    # Run-Step 'bun run build:server' { bun run build:server }
 }
 
 # 1) Frontend -> Cloudflare Pages
@@ -61,46 +55,42 @@ if ($Target -in @('all','frontend')) {
     }
 }
 
-# 2) Gateway -> Cloudflare Worker (ultrablabla-gateway)
+# 2) Gateway -> Cloudflare Worker
 if ($Target -in @('all','gateway')) {
     Write-Host ''
-    Write-Host '=== Deploy Gateway (Cloudflare Worker) ===' -ForegroundColor Cyan
-    if (-not (Test-Path (Join-Path $GatewayDir 'wrangler.toml'))) {
-        Write-Host "[FAIL] services\ultrablabla-gateway-worker\wrangler.toml introuvable" -ForegroundColor Red
-        exit 1
-    }
+    Write-Host '=== Deploy Gateway ===' -ForegroundColor Cyan
     Push-Location $GatewayDir
     try {
-        Run-Step 'wrangler deploy --dry-run (validation toml)' {
-            npx wrangler deploy --dry-run --outdir (Join-Path $env:TEMP 'wrangler-dryrun') 2>&1 | Out-Null
+        if (-not $NoBuild) {
+            Run-Step 'install gateway deps' { bun install }
         }
-        Run-Step 'wrangler deploy (cible: ultrablabla-gateway)' { npx wrangler deploy }
+        if (-not $DryRun) {
+            Run-Step 'wrangler deploy (gateway)' { npx wrangler deploy }
+        }
     } finally {
         Pop-Location
     }
 }
 
-# 3) Silero VAD WebGPU Durable Object
+# 3) Silero VAD WebGPU DO
 if ($Target -in @('all','silero')) {
     Write-Host ''
-    Write-Host '=== Deploy Silero VAD WebGPU Durable Object ===' -ForegroundColor Cyan
-    if (-not (Test-Path (Join-Path $SileroDir 'wrangler.jsonc'))) {
-        Write-Host "[FAIL] silero-vad-webgpu-do\wrangler.jsonc introuvable" -ForegroundColor Red
-        exit 1
-    }
-    if (-not (Test-Path (Join-Path $SileroDir 'node_modules'))) {
-        Run-Step 'npm install silero-vad-webgpu-do' {
-            Push-Location $SileroDir
-            try { npm install --legacy-peer-deps } finally { Pop-Location }
-        }
-    }
+    Write-Host '=== Deploy Silero VAD DO ===' -ForegroundColor Cyan
     Push-Location $SileroDir
     try {
-        Run-Step 'wrangler deploy (silero-vad-webgpu-do)' { npx wrangler deploy }
+        if (-not (Test-Path 'node_modules')) {
+            Run-Step 'npm install (silero)' { npm install --legacy-peer-deps }
+        }
+        if (-not $NoBuild) {
+            Run-Step 'build silero (esbuild + patches)' { npm run build }
+        }
+        if (-not $DryRun) {
+            Run-Step 'wrangler deploy (silero)' { npx wrangler deploy }
+        }
     } finally {
         Pop-Location
     }
 }
 
 Write-Host ''
-Write-Host '=== OK -> https://ultrablabla.pages.dev ===' -ForegroundColor Green
+Write-Host '=== OK ===' -ForegroundColor Green

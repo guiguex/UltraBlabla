@@ -1,0 +1,5 @@
+# Cloudflare Workers rejects assets > 25 MiB.
+# jsep.wasm is used for WebGPU CPU fallback; not deployed to stay under limit.
+public/onnxruntime-web/ort-wasm-simd-threaded.jsep.wasm
+# 7z archives are source distributions only.
+public/onnxruntime-web/*.7z

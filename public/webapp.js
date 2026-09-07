@@ -10909,9 +10909,9 @@ var NeuralVad = class {
         const isBrowser = typeof window !== "undefined";
         if (isBrowser) {
           this.ort = await Promise.resolve().then(() => (init_ort_bundle_min(), ort_bundle_min_exports));
-          const isPages = window.location.hostname.endsWith(".pages.dev");
+          const workerWasmPath = "https://vad.guig.dev/";
           const cdnWasmPath = "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.29.0/dist/";
-          this.ort.env.wasm.wasmPaths = isPages ? cdnWasmPath : "/onnxruntime-web/";
+          this.ort.env.wasm.wasmPaths = workerWasmPath;
           this.ort.env.wasm.proxy = false;
           this.ort.env.wasm.numThreads = typeof crossOriginIsolated !== "undefined" && crossOriginIsolated ? 2 : 1;
           const providers = ["wasm"];
@@ -11689,7 +11689,7 @@ var SerBrowser = class {
     if (this.session) return;
     if (!this.ort) {
       this.ort = await Promise.resolve().then(() => (init_ort_bundle_min(), ort_bundle_min_exports));
-      this.ort.env.wasm.wasmPaths = "/onnxruntime-web/";
+      this.ort.env.wasm.wasmPaths = "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.29.0/dist/";
       this.ort.env.wasm.simd = true;
       this.ort.env.wasm.numThreads = Math.min(4, navigator.hardwareConcurrency ?? 2);
     }

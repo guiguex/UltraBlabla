@@ -3,13 +3,20 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self' https: wss: ws: blob:; script-src 'self' 'unsafe-inline' blob: https://static.cloudflareinsights.com; worker-src 'self' blob:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob:; media-src 'self' blob: data:; base-uri 'self'; object-src 'none'">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self' https: wss: ws: blob:; script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' blob: https://vad.guig.dev https://static.cloudflareinsights.com; worker-src 'self' blob:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob:; media-src 'self' blob: data:; base-uri 'self'; object-src 'none'">
     <title>UltraBlabla • Compagnon Vocal IA Temps Réel</title>
     <meta name="description" content="Compagnon vocal IA ultra-rapide et conversationnel en temps réel">
     <meta property="og:title" content="UltraBlabla • Compagnon Vocal IA Temps Réel">
     <meta property="og:description" content="Compagnon vocal IA ultra-rapide et conversationnel en temps réel">
     <link rel="icon" type="image/png" href="icons/icon-32.png">
     <link rel="stylesheet" href="style.css">
+
+    <!-- Preload ONNX model + WASM (low ttfa) -->
+    <link rel="preload" as="fetch" href="https://vad.guig.dev/silero_vad_v5.onnx" crossorigin>
+    <link rel="preload" as="fetch" href="https://vad.guig.dev/ort-wasm-simd-threaded.asyncify.wasm" crossorigin>
+    <link rel="preload" as="fetch" href="https://vad.guig.dev/ort-wasm-simd-threaded.asyncify.mjs" crossorigin>
+    <link rel="preload" as="fetch" href="https://vad.guig.dev/ort-wasm-simd-threaded.wasm" crossorigin>
+    <link rel="preload" as="fetch" href="https://vad.guig.dev/ort-wasm-simd-threaded.mjs" crossorigin>
     <link rel="stylesheet" href="ultra-effects.css">
     <link rel="stylesheet" href="responsive.css">
     <link rel="manifest" href="manifest.webmanifest">

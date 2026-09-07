@@ -10909,23 +10909,30 @@ var NeuralVad = class {
         const isBrowser = typeof window !== "undefined";
         if (isBrowser) {
           this.ort = await Promise.resolve().then(() => (init_ort_bundle_min(), ort_bundle_min_exports));
-          this.ort.env.wasm.wasmPaths = "/onnxruntime-web/";
+          const isPages = window.location.hostname.endsWith(".pages.dev");
+          const cdnWasmPath = "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.29.0/dist/";
+          this.ort.env.wasm.wasmPaths = isPages ? cdnWasmPath : "/onnxruntime-web/";
           this.ort.env.wasm.proxy = false;
-          this.ort.env.wasm.simd = false;
-          this.ort.env.wasm.numThreads = 1;
+          this.ort.env.wasm.numThreads = typeof crossOriginIsolated !== "undefined" && crossOriginIsolated ? 2 : 1;
           const providers = ["wasm"];
           try {
             this.session = await this.ort.InferenceSession.create(this.opts.modelUrl, {
               executionProviders: providers,
               graphOptimizationLevel: "all"
             });
-            this.backend = providers.includes("webgpu") ? "webgpu" : "wasm";
-          } catch {
-            this.session = await this.ort.InferenceSession.create(this.opts.modelUrl, {
-              executionProviders: ["wasm"],
-              graphOptimizationLevel: "all"
-            });
             this.backend = "wasm";
+          } catch (initErr) {
+            if (this.ort.env.wasm.wasmPaths !== cdnWasmPath) {
+              console.warn(`[NeuralVad] Local wasm load failed (${initErr?.message}), retrying with CDN...`);
+              this.ort.env.wasm.wasmPaths = cdnWasmPath;
+              this.session = await this.ort.InferenceSession.create(this.opts.modelUrl, {
+                executionProviders: ["wasm"],
+                graphOptimizationLevel: "all"
+              });
+              this.backend = "wasm-cdn";
+            } else {
+              throw initErr;
+            }
           }
         } else {
           const dynamicImport = new Function("spec", "return import(spec)");
@@ -11366,8 +11373,15 @@ function toB64(pcm) {
 }
 function getDefaultAsrWsUrl() {
   if (typeof window === "undefined") return "ws://localhost:3000/v1/asr/stream";
-  const isLocal = window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1";
-  if (isLocal) {
+  if (window.__WS_ASR_URL__) return window.__WS_ASR_URL__;
+  const custom = localStorage.getItem("ultrablabla_asr_ws_url");
+  if (custom) return custom;
+  const hostname = window.location.hostname;
+  if (hostname.endsWith("guig.dev")) {
+    return "wss://api.guig.dev/v1/asr/stream";
+  }
+  const isPages = hostname.endsWith(".pages.dev");
+  if (!isPages) {
     const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
     return `${proto}//${window.location.host}/v1/asr/stream`;
   }
@@ -11430,7 +11444,7 @@ var WsAsrClient = class {
         }
       };
       rec.onerror = (err) => {
-        if (err.error !== "no-speech" && err.error !== "aborted") {
+        if (err.error !== "no-speech" && err.error !== "aborted" && err.error !== "network") {
           console.warn("[Fallback ASR error]", err.error);
         }
       };
@@ -11746,8 +11760,15 @@ var ser = new SerBrowser();
 // src/fe/voice/wsVoiceClient.ts
 function getDefaultVoiceWsUrl() {
   if (typeof window === "undefined") return "ws://localhost:3000/v1/voice/stream";
-  const isLocal = window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1";
-  if (isLocal) {
+  if (window.__WS_VOICE_URL__) return window.__WS_VOICE_URL__;
+  const custom = localStorage.getItem("ultrablabla_voice_ws_url");
+  if (custom) return custom;
+  const hostname = window.location.hostname;
+  if (hostname.endsWith("guig.dev")) {
+    return "wss://api.guig.dev/v1/voice/stream";
+  }
+  const isPages = hostname.endsWith(".pages.dev");
+  if (!isPages) {
     const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
     return `${proto}//${window.location.host}/v1/voice/stream`;
   }
@@ -11764,6 +11785,8 @@ var WsVoiceClient = class {
       interrupted: /* @__PURE__ */ new Set(),
       error: /* @__PURE__ */ new Set()
     };
+    this.currentPendingChat = null;
+    this.abortController = null;
     this.url = opts.url ?? getDefaultVoiceWsUrl();
   }
   on(event, fn2) {
@@ -11779,9 +11802,16 @@ var WsVoiceClient = class {
     this.listeners[event]?.forEach((fn2) => fn2(...args));
   }
   chat(text, opts = {}) {
+    this.currentPendingChat = { text, opts };
     if (!this.ws || this.ws.readyState !== 1) {
-      this.ws = new WebSocket(this.url);
-      this.ws.onopen = () => this._sendChat(text, opts);
+      try {
+        this.ws = new WebSocket(this.url);
+        this.ws.onopen = () => this._sendChat(text, opts);
+      } catch (e) {
+        console.warn("[WsVoiceClient] Direct WS instantiate failed, launching HTTP fallback...", e?.message);
+        void this.startHttpFallback(text, opts);
+        return;
+      }
     } else {
       this._sendChat(text, opts);
     }
@@ -11831,6 +11861,7 @@ var WsVoiceClient = class {
       }
       switch (parsed.type) {
         case "ready":
+          this.currentPendingChat = null;
           this.emit("ready");
           break;
         case "token":
@@ -11840,6 +11871,7 @@ var WsVoiceClient = class {
           this.emit("audio", { data: parsed.data, format: parsed.format || "wav" });
           break;
         case "done":
+          this.currentPendingChat = null;
           this.emit("done", { content: parsed.content, ttfa_ms: parsed.ttfa_ms });
           break;
         case "interrupted":
@@ -11850,10 +11882,143 @@ var WsVoiceClient = class {
           break;
       }
     };
-    this.ws.onerror = () => this.emit("error", { message: "ws error" });
+    this.ws.onerror = () => {
+      console.warn("[WsVoiceClient] WebSocket error detected.");
+      if (this.currentPendingChat) {
+        const { text, opts } = this.currentPendingChat;
+        this.currentPendingChat = null;
+        console.info("[WsVoiceClient] Activating automatic HTTP streaming fallback.");
+        void this.startHttpFallback(text, opts);
+      } else {
+        this.emit("error", { message: "ws error" });
+      }
+    };
     this.ws.onclose = () => {
       this.ws = null;
     };
+  }
+  async startHttpFallback(text, opts) {
+    this.abortController = new AbortController();
+    const signal = this.abortController.signal;
+    const startTime = Date.now();
+    this.emit("ready");
+    const voice = opts.voice || "remi";
+    const model = opts.model || "@cf/zai-org/glm-5.3-flash";
+    const messages = [
+      ...opts.system ? [{ role: "system", content: opts.system }] : [],
+      { role: "user", content: text }
+    ];
+    const chatEndpoints = [
+      "/v1/chat/completions",
+      "https://api.guig.dev/v1/chat/completions"
+    ];
+    let response = null;
+    for (const ep2 of chatEndpoints) {
+      try {
+        const res = await fetch(ep2, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Origin": window.location.origin
+          },
+          body: JSON.stringify({
+            model,
+            messages,
+            stream: true
+          }),
+          signal
+        });
+        if (res.ok && res.body) {
+          response = res;
+          break;
+        }
+      } catch {
+      }
+    }
+    if (!response || !response.body) {
+      this.emit("error", { message: "Mode vocal indisponible (serveur non joignable)" });
+      return;
+    }
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let sseBuffer = "";
+    let accumulatedText = "";
+    let sentenceBuffer = "";
+    const ttsEndpoints = [
+      "/v1/audio/speech",
+      "https://api.guig.dev/v1/audio/speech"
+    ];
+    const speakChunk = async (chunkText) => {
+      if (!chunkText.trim() || signal.aborted) return;
+      for (const ttsEp of ttsEndpoints) {
+        try {
+          const ttsRes = await fetch(ttsEp, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Origin": window.location.origin
+            },
+            body: JSON.stringify({
+              input: chunkText,
+              voice,
+              response_format: "wav"
+            }),
+            signal
+          });
+          if (ttsRes.ok) {
+            const buf = await ttsRes.arrayBuffer();
+            const bytes = new Uint8Array(buf);
+            let bin = "";
+            for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+            const b64 = btoa(bin);
+            this.emit("audio", { data: b64, format: "wav" });
+            return;
+          }
+        } catch {
+        }
+      }
+    };
+    try {
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        sseBuffer += decoder.decode(value, { stream: true });
+        const lines = sseBuffer.split("\n");
+        sseBuffer = lines.pop() || "";
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed || !trimmed.startsWith("data:")) continue;
+          const dataStr = trimmed.slice(5).trim();
+          if (dataStr === "[DONE]") continue;
+          try {
+            const parsed = JSON.parse(dataStr);
+            const delta = parsed.choices?.[0]?.delta?.content || "";
+            if (delta) {
+              accumulatedText += delta;
+              sentenceBuffer += delta;
+              this.emit("token", { content: delta });
+              const match = sentenceBuffer.match(/([^.!?:;\n]+[.!?:\n]+)/);
+              if (match) {
+                const chunk = match[1].trim();
+                sentenceBuffer = sentenceBuffer.slice(match.index + match[1].length);
+                if (chunk) {
+                  void speakChunk(chunk);
+                }
+              }
+            }
+          } catch {
+          }
+        }
+      }
+      if (sentenceBuffer.trim()) {
+        await speakChunk(sentenceBuffer.trim());
+      }
+      this.emit("done", { content: accumulatedText, ttfa_ms: Date.now() - startTime });
+    } catch (e) {
+      if (e?.name !== "AbortError") {
+        this.emit("error", { message: e?.message || "Erreur flux vocal" });
+      }
+    }
   }
   interrupt() {
     if (this.ws && this.ws.readyState === 1) {
@@ -12766,10 +12931,10 @@ var UltraBlablaLiveApp = class _UltraBlablaLiveApp {
     form.append("file", blob, "audio.wav");
     form.append("language", "fr");
     const endpoints = [
-      typeof window !== "undefined" && (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1") ? "/v1/audio/transcriptions" : null,
+      "/v1/audio/transcriptions",
       "https://ultrablabla.guig.dev/v1/audio/transcriptions",
       "https://api.guig.dev/v1/audio/transcriptions"
-    ].filter(Boolean);
+    ];
     for (const ep2 of endpoints) {
       try {
         const res = await fetch(ep2, {

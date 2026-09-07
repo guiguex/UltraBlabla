@@ -24,11 +24,21 @@ function toB64(pcm: Int16Array): string {
 
 function getDefaultAsrWsUrl(): string {
   if (typeof window === 'undefined') return 'ws://localhost:3000/v1/asr/stream';
-  const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-  if (isLocal) {
+  if ((window as any).__WS_ASR_URL__) return (window as any).__WS_ASR_URL__;
+  const custom = localStorage.getItem('ultrablabla_asr_ws_url');
+  if (custom) return custom;
+
+  const hostname = window.location.hostname;
+  if (hostname.endsWith('guig.dev')) {
+    return 'wss://api.guig.dev/v1/asr/stream';
+  }
+
+  const isPages = hostname.endsWith('.pages.dev');
+  if (!isPages) {
     const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     return `${proto}//${window.location.host}/v1/asr/stream`;
   }
+
   return 'wss://api.guig.dev/v1/asr/stream';
 }
 
@@ -93,7 +103,7 @@ export class WsAsrClient {
       };
 
       rec.onerror = (err: any) => {
-        if (err.error !== 'no-speech' && err.error !== 'aborted') {
+        if (err.error !== 'no-speech' && err.error !== 'aborted' && err.error !== 'network') {
           console.warn('[Fallback ASR error]', err.error);
         }
       };

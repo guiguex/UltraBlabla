@@ -570,10 +570,10 @@ class UltraBlablaLiveApp {
         form.append('language', 'fr');
 
         const endpoints = [
-            (typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')) ? '/v1/audio/transcriptions' : null,
+            '/v1/audio/transcriptions',
             'https://ultrablabla.guig.dev/v1/audio/transcriptions',
             'https://api.guig.dev/v1/audio/transcriptions',
-        ].filter(Boolean) as string[];
+        ];
 
         for (const ep of endpoints) {
             try {

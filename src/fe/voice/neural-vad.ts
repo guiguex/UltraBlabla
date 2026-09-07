@@ -118,13 +118,14 @@ export class NeuralVad {
         const isBrowser = typeof window !== 'undefined';
         if (isBrowser) {
           this.ort = await import('onnxruntime-web');
-          this.ort.env.wasm.wasmPaths = '/onnxruntime-web/';
-          // Anti-regression: proxy=false + simd=false + numThreads=1 pour eviter
-          // "previous call to 'initWasm()' failed" sur navigateurs / CPU qui
-          // ne supportent pas SIMD/pthread. Plus lent mais fiable.
+          
+          // Use CDN if on Cloudflare Pages static hosting or local wasm missing
+          const isPages = window.location.hostname.endsWith('.pages.dev');
+          const cdnWasmPath = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.29.0/dist/';
+          this.ort.env.wasm.wasmPaths = isPages ? cdnWasmPath : '/onnxruntime-web/';
           this.ort.env.wasm.proxy = false;
-          this.ort.env.wasm.simd = false;
-          this.ort.env.wasm.numThreads = 1;
+          // Note: do not set simd = false; modern onnxruntime-web requires SIMD wasm binary (ort-wasm-simd-threaded.wasm)
+          this.ort.env.wasm.numThreads = (typeof crossOriginIsolated !== 'undefined' && crossOriginIsolated) ? 2 : 1;
 
           const providers: any[] = ['wasm'];
 
@@ -133,13 +134,20 @@ export class NeuralVad {
               executionProviders: providers,
               graphOptimizationLevel: 'all',
             });
-            this.backend = providers.includes('webgpu') ? 'webgpu' : 'wasm';
-          } catch {
-            this.session = await this.ort.InferenceSession.create(this.opts.modelUrl, {
-              executionProviders: ['wasm'],
-              graphOptimizationLevel: 'all',
-            });
             this.backend = 'wasm';
+          } catch (initErr: any) {
+            // If local wasm failed, retry once with CDN before falling back to RMS
+            if (this.ort.env.wasm.wasmPaths !== cdnWasmPath) {
+              console.warn(`[NeuralVad] Local wasm load failed (${initErr?.message}), retrying with CDN...`);
+              this.ort.env.wasm.wasmPaths = cdnWasmPath;
+              this.session = await this.ort.InferenceSession.create(this.opts.modelUrl, {
+                executionProviders: ['wasm'],
+                graphOptimizationLevel: 'all',
+              });
+              this.backend = 'wasm-cdn';
+            } else {
+              throw initErr;
+            }
           }
         } else {
           // Node or Bun runtime: load dynamically without bundler static resolution
